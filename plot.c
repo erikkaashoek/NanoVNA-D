@@ -2156,6 +2156,8 @@ draw_measurements(void)
   } else
     lcd_printf(x+260,   y, "                            ");
 #endif
+  lcd_printf(x+390,   y, "%s",&(NANOVNA_VERSION[1]));
+
 //  lcd_printf(x+350,  y, "DP:%.8Fs         ", (aver_phase_d/360.0)/ (float)get_sweep_frequency(ST_CW));
   y+= FONT_STR_HEIGHT + FONT_STR_HEIGHT ;
 

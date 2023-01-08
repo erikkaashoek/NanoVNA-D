@@ -1701,7 +1701,7 @@ static void vna_save_file(char *name, uint8_t format)
 #if FF_USE_LFN >= 1
     uint32_t tr = rtc_get_tr_bcd(); // TR read first
     uint32_t dr = rtc_get_dr_bcd(); // DR read second
-    plot_printf(fs_filename, FF_LFN_BUF, "VNA_%06x_%06x.%s", dr, tr, file_ext[format]);
+    plot_printf(fs_filename, FF_LFN_BUF, "PFA_%06x_%06x.%s", dr, tr, file_ext[format]);
 #else
     plot_printf(fs_filename, FF_LFN_BUF, "%08x.%s", rtc_get_FAT(), file_ext[format]);
 #endif
@@ -2585,7 +2585,7 @@ static const keypads_t keypads_freq[] = {
 };
 
 static const keypads_t keypads_ufloat[] = { //
-  { 13, NUM_KEYBOARD },     // 13 buttons NUM keyboard (4x4 size)
+  { 16, NUM_KEYBOARD },     // 13 buttons NUM keyboard (4x4 size)
   { 0x13, KP_PERIOD },
   { 0x03, KP_0 },           // 7 8 9
   { 0x02, KP_1 },           // 4 5 6
@@ -2598,11 +2598,14 @@ static const keypads_t keypads_ufloat[] = { //
   { 0x10, KP_8 },
   { 0x20, KP_9 },
   { 0x33, KP_ENTER },
-  { 0x23, KP_BS }
+  { 0x23, KP_BS },
+  { 0x30, KP_EMPTY },
+  { 0x31, KP_EMPTY },
+  { 0x32, KP_EMPTY },
 };
 
 static const keypads_t keypads_percent[] = { //
-  { 13, NUM_KEYBOARD },     // 13 buttons NUM keyboard (4x4 size)
+  { 16, NUM_KEYBOARD },     // 13 buttons NUM keyboard (4x4 size)
   { 0x13, KP_PERIOD },
   { 0x03, KP_0 },           // 7 8 9
   { 0x02, KP_1 },           // 4 5 6
@@ -2615,7 +2618,10 @@ static const keypads_t keypads_percent[] = { //
   { 0x10, KP_8 },
   { 0x20, KP_9 },
   { 0x33, KP_PERCENT },
-  { 0x23, KP_BS }
+  { 0x23, KP_BS },
+  { 0x30, KP_EMPTY },
+  { 0x31, KP_EMPTY },
+  { 0x32, KP_EMPTY },
 };
 
 static const keypads_t keypads_float[] = {
@@ -2919,6 +2925,8 @@ draw_keypad_button(int id) {
   int x = p->x_offs + (keypads[id+1].pos>> 4) * p->width;
   int y = p->y_offs + (keypads[id+1].pos&0xF) * p->height;
   draw_button(x, y, p->width, p->height, &button);
+  if (keypads[id+1].c == KP_EMPTY)
+    return;
   if (keypads[0].c == NUM_KEYBOARD) {
     lcd_drawfont(keypads[id+1].c,
                      x + (KP_WIDTH - NUM_FONT_GET_WIDTH) / 2,

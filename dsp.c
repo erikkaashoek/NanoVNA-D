@@ -273,6 +273,9 @@ dsp_process(audio_sample_t *capture, size_t length)
 //  int64_t ref_s = 0;
 //  int64_t ref_c = 0;
 
+  if( current_props._fft_mode == FFT_B && (VNA_MODE(VNA_MODE_WIDE)))
+    capture++;
+
   do{
 
     if ((current_props._fft_mode == FFT_AMP || current_props._fft_mode == FFT_B) && (VNA_MODE(VNA_MODE_WIDE)) ) {

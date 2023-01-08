@@ -290,6 +290,7 @@ extern float level_sb;
 extern int missing_samples;
 extern uint32_t transform_count;
 extern uint32_t max_average_count;
+extern const char NANOVNA_VERSION[];
 
 /*
  * CPU Hardware depend functions declaration
@@ -852,7 +853,8 @@ enum {
   KP_PLUSMINUS,
   KP_KEYPAD,
   KP_SPACE,
-  KP_PLUS
+  KP_PLUS,
+  KP_EMPTY,
 #endif
 };
 
