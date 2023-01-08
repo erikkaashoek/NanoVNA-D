@@ -1272,6 +1272,20 @@ static UI_FUNCTION_ADV_CALLBACK(menu_points_sel_acb)
   menu_push_submenu(menu_sweep_points);
 }
 
+const menuitem_t menu_trace[];
+static UI_FUNCTION_ADV_CALLBACK(menu_trace_sel_acb)
+{
+  (void)data;
+  if (b){
+    if (current_trace != TRACE_INVALID)
+      b->p1.u = current_trace+1;
+    else
+      b->p1.u = 0;
+    return;
+  }
+  menu_push_submenu(menu_trace);
+}
+
 static const uint16_t point_counts_set[POINTS_SET_COUNT] = POINTS_SET;
 static UI_FUNCTION_ADV_CALLBACK(menu_points_acb)
 {
@@ -2117,7 +2131,7 @@ const menuitem_t menu_display[] = {
 //  { MT_ADV_CALLBACK, VNA_MODE_FREEZE_DISPLAY,  "FREEZE\nDISPLAY",                         menu_vna_mode_acb},
   { MT_SUBMENU,      0, "FFT",                          menu_transform },
   { MT_ADV_CALLBACK, VNA_MODE_SCROLLING, "SCROLL\nTRACE",     menu_vna_mode_acb },
-  { MT_SUBMENU,      0, "TRACE",                               menu_trace },
+  { MT_ADV_CALLBACK,      0, "TRACE\n" R_LINK_COLOR " %u",         menu_trace_sel_acb },
   { MT_SUBMENU,      0, "FORMAT",                              menu_formatS11 },
 //  { MT_ADV_CALLBACK, 0, "CHANNEL\n" R_LINK_COLOR " %s",        menu_channel_acb },
   { MT_SUBMENU,      0, "SCALE",                               menu_scale },
@@ -2588,8 +2602,8 @@ static const keypads_t keypads_ufloat[] = { //
   { 16, NUM_KEYBOARD },     // 13 buttons NUM keyboard (4x4 size)
   { 0x13, KP_PERIOD },
   { 0x03, KP_0 },           // 7 8 9
-  { 0x02, KP_1 },           // 4 5 6
-  { 0x12, KP_2 },           // 1 2 3
+  { 0x02, KP_1 },           // 4 5 6 u
+  { 0x12, KP_2 },           // 1 2 3 m
   { 0x22, KP_3 },           // 0 . < x
   { 0x01, KP_4 },
   { 0x11, KP_5 },
@@ -2600,8 +2614,8 @@ static const keypads_t keypads_ufloat[] = { //
   { 0x33, KP_ENTER },
   { 0x23, KP_BS },
   { 0x30, KP_EMPTY },
-  { 0x31, KP_EMPTY },
-  { 0x32, KP_EMPTY },
+  { 0x31, KP_u },
+  { 0x32, KP_m },
 };
 
 static const keypads_t keypads_percent[] = { //
@@ -2627,8 +2641,8 @@ static const keypads_t keypads_percent[] = { //
 static const keypads_t keypads_float[] = {
   { 16, NUM_KEYBOARD },     // 14 buttons NUM keyboard (4x4 size)
   { 0x13, KP_PERIOD },
-  { 0x03, KP_0 },           // 7 8 9
-  { 0x02, KP_1 },           // 4 5 6
+  { 0x03, KP_0 },           // 7 8 9 u
+  { 0x02, KP_1 },           // 4 5 6 m
   { 0x12, KP_2 },           // 1 2 3 -
   { 0x22, KP_3 },           // 0 . < x
   { 0x01, KP_4 },
@@ -2739,7 +2753,7 @@ UI_KEYBOARD_CALLBACK(input_points) {
 
 UI_KEYBOARD_CALLBACK(input_scale) {
   (void)data;
-  if (b) {/*b->p1.f = current_trace != TRACE_INVALID ? get_trace_scale(current_trace) : 0;*/return;}
+  if (b) {b->p1.f = current_trace != TRACE_INVALID ? get_trace_scale(current_trace) : 0;return;}
   set_trace_scale(current_trace, keyboard_get_float());
 }
 
