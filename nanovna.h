@@ -1276,12 +1276,12 @@ typedef uint16_t pixel_t;
 #define HEXRGB(hex) ( (((hex)>>3)&0x001c00) | (((hex)>>5)&0x0000f8) | (((hex)<<16)&0xf80000) | (((hex)<<13)&0x00e000) )
 #define LCD_PIXEL_SIZE        2
 // Cell size, depends from spi_buffer size, CELLWIDTH*CELLHEIGHT*sizeof(pixel) <= sizeof(spi_buffer)
-#define CELLWIDTH  (64)
+#define CELLWIDTH  (32)
 #define CELLHEIGHT (32)
 #endif
 
 // Define size of screen buffer in pixel_t (need for cell w * h * count)
-#define SPI_BUFFER_SIZE             (CELLWIDTH * CELLHEIGHT * DISPLAY_CELL_BUFFER_COUNT)
+#define SPI_BUFFER_SIZE             (CELLWIDTH * 2 * CELLHEIGHT * DISPLAY_CELL_BUFFER_COUNT)
 
 #ifndef SPI_BUFFER_SIZE
 #error "Define LCD pixel format"

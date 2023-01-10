@@ -1277,9 +1277,10 @@ static UI_FUNCTION_ADV_CALLBACK(menu_trace_sel_acb)
 {
   (void)data;
   if (b){
-    if (current_trace != TRACE_INVALID)
-      b->p1.u = current_trace+1;
-    else
+    if (current_trace != TRACE_INVALID) {
+      b->bg = LCD_TRACE_1_COLOR + current_trace;
+      b->p1.u = current_trace;
+    } else
       b->p1.u = 0;
     return;
   }

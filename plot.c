@@ -1599,6 +1599,8 @@ static void cell_grid_line_info(int x0, int y0)
   // Render grid values
   lcd_set_foreground(LCD_TRACE_1_COLOR + current_trace);
   do {
+    if (v < scale/2 && v > scale/2)
+      v = 0;
     cell_printf(xpos, ypos, "% 6.3F", v); v-=scale;
   }while((ypos+=GRIDY) < CELLHEIGHT);
   cell_set_font(FONT_NORMAL);
