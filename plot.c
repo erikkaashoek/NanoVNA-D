@@ -2096,13 +2096,18 @@ static int lcd_large(int x, int y, double f, int dash, int index, int dot, int s
       f = -f;
       c = KP_MINUS;
     }
+    if (c+1 != font_cache[index]) {
+      font_cache[index] = c+1;
+      lcd_drawfont(c, x, y);
+    }
+    index++;
+    x+=NUM_FONT_GET_WIDTH;
   }
-  if (c+1 != font_cache[index]) {
-    font_cache[index] = c+1;
-    lcd_drawfont(c, x, y);
+  if (!sign) {
+    mask <<= 1;
+    f /= 10;
+    index -= 1;
   }
-  index++;
-  x+=NUM_FONT_GET_WIDTH;
   while (mask) {
     if (mask & 1) {
       c = (index == dot ? KP_PERIOD : KP_SPACE);
