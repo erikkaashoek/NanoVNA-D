@@ -2083,7 +2083,7 @@ uint8_t font_cache[MAX_FONT_CACHE];
 
 static void clear_cache(void)
 {
-  for (int i = 0; i < MAX_FONT_CACHE; i++) font_cache[i] = 0;
+  for (int i = 0; i < MAX_FONT_CACHE; i++) font_cache[i] = 250;
 }
 
 static int lcd_large(int x, int y, double f, int dash, int index, int dot, int sign)
@@ -2096,17 +2096,14 @@ static int lcd_large(int x, int y, double f, int dash, int index, int dot, int s
       f = -f;
       c = KP_MINUS;
     }
-    if (c+1 != font_cache[index]) {
-      font_cache[index] = c+1;
+    if (c != font_cache[index]) {
+      font_cache[index] = c;
       lcd_drawfont(c, x, y);
     }
     index++;
     x+=NUM_FONT_GET_WIDTH;
-  }
-  if (!sign) {
-    mask <<= 1;
-    f /= 10;
-    index -= 1;
+  } else {
+    mask = mask << 1;
   }
   while (mask) {
     if (mask & 1) {
@@ -2116,8 +2113,8 @@ static int lcd_large(int x, int y, double f, int dash, int index, int dot, int s
       f -= (int)f;
       f *= 10;
     }
-    if (c+1 != font_cache[index]) {
-      font_cache[index] = c+1;
+    if (c != font_cache[index]) {
+      font_cache[index] = c;
       lcd_drawfont(c,x,y);
     }
     index++;
@@ -2175,10 +2172,10 @@ draw_measurements(void)
   double f;
   if (level_b < MIN_LEVEL || current_props._fft_mode == FFT_AMP) {
     lcd_printf(x,y+10, "   A Freq:  ");
-    f = (((double)aver_freq_a) + (double)get_sweep_frequency(ST_CW)) / 100000000;
+    f = (((double)aver_freq_a) + (double)get_sweep_frequency(ST_CW)) / 1000000000;
   } else if (current_props._fft_mode == FFT_B) {
       lcd_printf(x,y+10, "   B Freq:  ");
-      f = (((double)aver_freq_a) + (double)get_sweep_frequency(ST_CW)) / 100000000;
+      f = (((double)aver_freq_a) + (double)get_sweep_frequency(ST_CW)) / 1000000000;
   } else {
     lcd_printf(x,y+10, "B-A Freq:  ");
     f = (VNA_MODE(VNA_MODE_TRACE_AVER) ? aver_freq_d : last_freq_d) / 100;
