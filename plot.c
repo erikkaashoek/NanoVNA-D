@@ -2167,21 +2167,26 @@ draw_measurements(void)
 
   char *aver_text = (VNA_MODE(VNA_MODE_TRACE_AVER) ? "Aver": "Last");
 
-  if (level_a < MIN_LEVEL || level_b < MIN_LEVEL  || current_props._fft_mode != FFT_OFF) dash = true;
   lcd_printf(x,y   , aver_text);
   double f;
-  if (level_b < MIN_LEVEL || current_props._fft_mode == FFT_AMP) {
+  int sign = true;
+  if (level_a < MIN_LEVEL && level_b < MIN_LEVEL && (current_props._fft_mode == FFT_OFF || current_props._fft_mode == FFT_PHASE)) {
+    dash = true;
+  } else if ((level_b < MIN_LEVEL  && current_props._fft_mode == FFT_OFF ) || current_props._fft_mode == FFT_AMP ) {
     lcd_printf(x,y+10, "   A Freq:  ");
     f = (((double)aver_freq_a) + (double)get_sweep_frequency(ST_CW)) / 1000000000;
-  } else if (current_props._fft_mode == FFT_B) {
+    sign = false;
+  } else if ((level_a < MIN_LEVEL  && current_props._fft_mode == FFT_OFF) || current_props._fft_mode == FFT_B) {
       lcd_printf(x,y+10, "   B Freq:  ");
       f = (((double)aver_freq_a) + (double)get_sweep_frequency(ST_CW)) / 1000000000;
+      sign = false;
   } else {
     lcd_printf(x,y+10, "B-A Freq:  ");
     f = (VNA_MODE(VNA_MODE_TRACE_AVER) ? aver_freq_d : last_freq_d) / 100;
+    if (level_a < MIN_LEVEL || level_b < MIN_LEVEL  || current_props._fft_mode != FFT_OFF) dash = true;
   }
   x = 100;
-  x = lcd_large(x, y, f, level_a < MIN_LEVEL && current_props._fft_mode == FFT_OFF, 0, 4,current_props._fft_mode != FFT_OFF || !(level_b < MIN_LEVEL));
+  x = lcd_large(x, y, f, dash, 0, 4, sign);
   if (level_b < MIN_LEVEL || current_props._fft_mode != FFT_OFF)
     lcd_printf(x,y, "MHz  ");
   else
