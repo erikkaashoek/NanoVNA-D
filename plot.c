@@ -2079,7 +2079,7 @@ cell_draw_marker_info(int x0, int y0)
 #ifndef MEASUREMENT_IN_GRID
 
 #define MAX_FONT_CACHE 32
-uint8_t font_cache[MAX_FONT_CACHE];
+uint8_t font_cache[MAX_FONT_CACHE] = { 250,250,250,250,250,250,250,250,250,250,250,250,250,250,250,250,250,250,250,250,250,250,250,250,250,250,250,250,250,250,250,250};
 
 static void clear_cache(void)
 {

@@ -617,7 +617,7 @@ si5351_set_frequency(uint32_t freq, uint8_t drive_strength)
       // Calculate and set CH0 and CH1 divider
       si5351_set_frequency_fixedpll(OFREQ_CHANNEL, (uint64_t)omul * cc_xtal() * pll_n, ofreq*FREQ_SCALE, rdiv, ods | SI5351_CLK_PLL_SELECT_A);
 #ifdef SIDE_CHANNEL
-      if (VNA_MODE(VNA_MODE_SIDE))
+//      if (VNA_MODE(VNA_MODE_SIDE))
         si5351_set_frequency_fixedpll(FREQ_CHANNEL, (uint64_t)mul * cc_xtal() * pll_n,  freq*FREQ_SCALE, rdiv, ods | SI5351_CLK_PLL_SELECT_A);
 #endif
       break;
@@ -664,6 +664,7 @@ si5351_set_frequency(uint32_t freq, uint8_t drive_strength)
       delay= DELAY_BAND_3_4;
       break;
   }
+  si5351_write(SI5351_REG_3_OUTPUT_ENABLE_CONTROL, ~(SI5351_CLK0_EN|SI5351_CLK1_EN|SI5351_CLK2_EN));
   if (current_band != band) {
 //    si5351_write(SI5351_REG_3_OUTPUT_ENABLE_CONTROL, ~(SI5351_CLK0_EN|SI5351_CLK1_EN|SI5351_CLK2_EN));
     // Possibly not need add delay now
