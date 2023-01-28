@@ -1932,14 +1932,14 @@ fetch_next:
     set_frequency(get_sweep_frequency(ST_START));       // This will update using the new pll value
   } else if (VNA_MODE(VNA_MODE_PLL)) {
     if (level_a > MIN_LEVEL && level_b > MIN_LEVEL /* && !(VNA_MODE(VNA_MODE_DISK_LOG) || VNA_MODE(VNA_MODE_USB_LOG))*/ ) {
-      float new_pll;
+      volatile float new_pll;
       float factor = PLL_SCALE;
 //    if (VNA_MODE(VNA_MODE_SCROLLING))
 //      factor *= get_tau();
       if (-0.05 < v && v < 0.05)
         v /= 3;       // Slow speed when close
-      new_pll = current_props.pll - v * factor * 10000000.0 / get_sweep_frequency(ST_CENTER); // Scale is normalized to 10MHz
-      if (new_pll < 10000 && new_pll > -10000 && ((current_props.pll - new_pll) > 0.2 || (current_props.pll - new_pll) < -0.2)) {
+      new_pll = current_props.pll - v * factor * 10000000.0 / (float) get_sweep_frequency(ST_CENTER); // Scale is normalized to 10MHz
+      if (new_pll < 30000 && new_pll > -30000 && ((current_props.pll - new_pll) > 0.5 || (current_props.pll - new_pll) < -0.5)) {
         current_props.pll = new_pll;
         set_frequency(get_sweep_frequency(ST_START));       // This will update using the new pll value
 //        shell_printf("<>%.3f %.2f\r\n", 1000*aver_freq_a, new_pll);

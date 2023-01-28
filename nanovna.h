@@ -52,7 +52,7 @@
 #define FFT_COMPRESS
 //#define MEASUREMENT_IN_GRID
 #define FREQ_SCALE  (int64_t)100LL
-#define PLL_SCALE  (26.0 * FREQ_SCALE / 10)
+#define PLL_SCALE  (26.0/10.0 * FREQ_SCALE)
 
 // Enable DMA mode for send data to LCD (Need enable HAL_USE_SPI in halconf.h)
 #define __USE_DISPLAY_DMA__

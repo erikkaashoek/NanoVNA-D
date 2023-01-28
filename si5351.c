@@ -210,7 +210,7 @@ void si5351_set_tcxo(uint32_t xtal){
 }
 
 uint64_t cc_xtal(void) { // corrected and scaled xtal freq
-  return (uint64_t)((uint64_t)config._xtal_freq * FREQ_SCALE + (uint64_t)config.xtal_offset + (uint64_t)current_props.pll);
+  return (uint64_t)((int64_t)config._xtal_freq * FREQ_SCALE + (int64_t)config.xtal_offset + (int64_t)current_props.pll);
 }
 
 void si5351_set_phase(int p0, int p1, int p2)
