@@ -2173,6 +2173,7 @@ draw_measurements(void)
   int sign = true;
   if (level_a < MIN_LEVEL && level_b < MIN_LEVEL && (current_props._fft_mode == FFT_OFF || current_props._fft_mode == FFT_PHASE)) {
     dash = true;
+    f = 0;
   } else if ((level_b < MIN_LEVEL  && current_props._fft_mode == FFT_OFF ) || current_props._fft_mode == FFT_AMP ) {
     lcd_printf(x,y+10, "   A Freq:  ");
     f = (((double)aver_freq_a) + (double)get_sweep_frequency(ST_CW)) / 1000000000;
