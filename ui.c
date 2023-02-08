@@ -253,8 +253,8 @@ static void flush_disk_log(void);
 
 static char append_filename[FF_LFN_BUF];
 
-#define DISK_LOG_SIZE   32
-static float disk_log_data[DISK_LOG_SIZE];
+#define DISK_LOG_SIZE   64
+static double disk_log_data[DISK_LOG_SIZE];
 static int disk_log_index = 0;
 
 
@@ -1224,6 +1224,9 @@ void apply_VNA_mode(uint16_t idx, uint16_t value) {
       }
       si5351_set_frequency(get_sweep_frequency(ST_START), current_props._power);
       break;
+    case VNA_MODE_UNWRAP:
+      if (VNA_MODE(VNA_MODE_UNWRAP))
+        reset_phase_unwrap();
   }
 }
 
@@ -1829,13 +1832,18 @@ static UI_FUNCTION_CALLBACK(menu_sdcard_cb)
 
 void flush_disk_log(void)
 {
+  if (append_filename[0] == 0)
+    return;
   FRESULT res = vna_append_file(append_filename);
   if (res != FR_OK)
     return;
   for (int i = 0; i < disk_log_index && res == FR_OK; i++) {
     char *buf_8  = (char *)spi_buffer;
-    UINT size = plot_printf(buf_8, 128, "%f\r\n", disk_log_data[i]);
-//        total_size+=size;
+    UINT size;
+    if (VNA_MODE(VNA_MODE_UNWRAP))
+      size = plot_printf(buf_8, 128, "%.12e\r\n",  disk_log_data[i]);
+    else
+      size = plot_printf(buf_8, 128, "%f\r\n", (float) disk_log_data[i]);
     res = f_write(fs_file, buf_8, size, &size);
     if (res != FR_OK) break;
   }

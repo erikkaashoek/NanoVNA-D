@@ -292,6 +292,8 @@ extern uint32_t transform_count;
 extern uint32_t max_average_count;
 extern const char NANOVNA_VERSION[];
 
+void reset_phase_unwrap(void);
+
 /*
  * CPU Hardware depend functions declaration
  */

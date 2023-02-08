@@ -1625,6 +1625,11 @@ void do_agc(void)
 #endif
 }
 
+void reset_phase_unwrap(void) {
+  phase_wraps = 0;
+  prev_phase = 0;
+}
+
 // main loop for measurement
 static bool sweep(bool break_on_operation, uint16_t mask)
 {
@@ -1795,8 +1800,11 @@ fetch_next:
       }
 
       double phase = temp_measured[temp_output][3];
-      double unwrapped_phase = phase + phase_wraps;
-      double delta_phase = unwrapped_phase - prev_phase;
+      double phase_output = phase/2;
+      double unwrapped_phase = phase + phase_wraps;     // Unwrap
+
+      if (VNA_MODE(VNA_MODE_UNWRAP)) {
+      double delta_phase = unwrapped_phase - prev_phase; // Update phase_wraps
       if (delta_phase > HALF_PHASE) {
          phase_wraps -= FULL_PHASE;
          unwrapped_phase -= FULL_PHASE;
@@ -1806,17 +1814,19 @@ fetch_next:
          unwrapped_phase += FULL_PHASE;
       }
       prev_phase = unwrapped_phase;
+      freq_t f = get_sweep_frequency(ST_START);
+      phase_output = unwrapped_phase / 2 / f;       // scaled to frequency
+      }
+
 
 //      float v = temp_measured[temp_output][3]/2;
       if (VNA_MODE(VNA_MODE_DISK_LOG))
-        disk_log(VNA_MODE(VNA_MODE_UNWRAP)? unwrapped_phase/2 : phase/2);
+        disk_log(phase_output);
       if (VNA_MODE(VNA_MODE_USB_LOG)) {
-        freq_t f = get_sweep_frequency(ST_START);
-        double v = (VNA_MODE(VNA_MODE_UNWRAP)? unwrapped_phase/2 : phase/2) / f;
         if (VNA_MODE(VNA_MODE_UNWRAP))
-          shell_printf("%.12e ChA\r\n", v);
+          shell_printf("%.12e ChA\r\n", phase_output);
         else
-          shell_printf("%f ChA\r\n", phase/2);
+          shell_printf("%f ChA\r\n", (float)phase_output);
 #ifdef SIDE_CHANNEL
         if (VNA_MODE(VNA_MODE_DUMP_SIDE)) {
           float v2 = temp_measured[temp_output][0]/2;
