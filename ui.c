@@ -2151,8 +2151,8 @@ const menuitem_t menu_display[] = {
 
 const menuitem_t menu_output[] = {
   { MT_ADV_CALLBACK,    VNA_MODE_USB_LOG,       "USB\nLOG",         menu_vna_mode_acb },
-  { MT_ADV_CALLBACK,    VNA_MODE_UNWRAP,        "UNWRAP\nUSB LOG ",menu_vna_mode_acb},
   { MT_ADV_CALLBACK,    VNA_MODE_DISK_LOG,      "DISK\nLOG",        menu_vna_mode_acb },
+  { MT_ADV_CALLBACK,    VNA_MODE_UNWRAP,        "UNWRAP",           menu_vna_mode_acb},
   { MT_ADV_CALLBACK,    VNA_MODE_AUTO_NAME,     "AUTO\nNAME",       menu_vna_mode_acb},
   { MT_CALLBACK,        FMT_BMP_FILE,           "SAVE\nSCREENSHOT", menu_sdcard_cb },
 #ifdef __SD_FILE_BROWSER__
