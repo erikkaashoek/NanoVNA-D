@@ -1196,7 +1196,7 @@ void apply_VNA_mode(uint16_t idx, uint16_t value) {
     case VNA_MODE_DISK_LOG:
       if (VNA_MODE(VNA_MODE_DISK_LOG)) {
         if (get_tau() < 0.09) {
-          drawMessageBox("DISK LOG", "Set Tau >= 0.1 s ", 2000);
+          drawMessageBox("DISK LOG", "Set tau >= 0.1 s ", 2000);
           config._vna_mode&=~m;
           return;
         }
@@ -2119,7 +2119,7 @@ const menuitem_t menu_measure_settings[] = {
 
 const menuitem_t menu_measure[] = {
   { MT_ADV_CALLBACK, KM_CW,                 "FREQ",                                 menu_keyboard_acb },
-  { MT_ADV_CALLBACK, KM_TAU,                "TAU\n" R_LINK_COLOR " %b.3f" S_SECOND, menu_keyboard_acb },
+  { MT_ADV_CALLBACK, KM_TAU,                "tau\n" R_LINK_COLOR " %b.3f" S_SECOND, menu_keyboard_acb },
   { MT_ADV_CALLBACK, 0,                     "DECIMATION\n" R_LINK_COLOR " %bd" ,    menu_decimation_sel_acb },
   { MT_ADV_CALLBACK, VNA_MODE_NULL_PHASE,   "NULL\nPHASE",                          menu_vna_mode_acb },
   { MT_CALLBACK, 0,                         "NULL\nA FREQ",                         menu_null_a_freq_cb },
@@ -2907,7 +2907,7 @@ const keypads_list keypads_mode_tbl[KM_NONE] = {
 [KM_BIN_NAME]        = {KEYPAD_TEXT,   FMT_BIN_FILE,  "BIN",                input_filename }, // bin filename
 #endif
 [KM_CSV_NAME]       = {KEYPAD_TEXT,    FMT_CSV_FILE, "CSV",                input_filename },  // csv filename
-[KM_TAU]            = {KEYPAD_FLOAT,   0,            "TAU",                input_tau      },  // tau
+[KM_TAU]            = {KEYPAD_FLOAT,   0,            "tau",                input_tau      },  // tau
 #endif
 [KM_PULL_1]         = {KEYPAD_FLOAT,   KM_PULL_1,    "PULL 1",             input_pull     }, // pull 1
 [KM_PULL_2]         = {KEYPAD_FLOAT,   KM_PULL_2,    "PULL 2",             input_pull     }, // pull 1

@@ -256,7 +256,7 @@ static float null_phase = 0.5;
 // Cortex M4 DSP instruction use
 #include "dsp.h"
 void
-dsp_process(audio_sample_t *capture, size_t length)
+dsp_process(audio_sample_t *capture, size_t length)         // Accumulated (down converted) samples in acc_x_s and acc_x_c registers
 {
   if (props_mode & TD_PNA) {
     length /= 2;
@@ -274,7 +274,7 @@ dsp_process(audio_sample_t *capture, size_t length)
 //  int64_t ref_c = 0;
 
   if( current_props._fft_mode == FFT_B && (VNA_MODE(VNA_MODE_WIDE)))
-    capture++;
+    capture++;  // Switch to other channel
 
   do{
 
@@ -304,8 +304,8 @@ dsp_process(audio_sample_t *capture, size_t length)
 #ifndef   AVER_SAMPLE
       i++;
 #endif
-      continue;
-    }
+
+    } else {
 
     int32_t sc = ((int32_t *)sincos_tbl)[i];
     int32_t sr = ((int32_t *)capture)[i];
@@ -334,6 +334,7 @@ dsp_process(audio_sample_t *capture, size_t length)
     acc_ref_c2 = __smlalbt( acc_ref_c2, sr, sc2 ); //  ref_s+= ref * cos
 #endif
     i++;
+    }
   } while (i < length/2);
 // Accumulate result, for faster calc and prevent overflow reduce size to int32_t
 //  acc_samp_s+= (int32_t)(samp_s>>4);
@@ -375,20 +376,20 @@ int log_index = 0;
 void
 calculate_vectors(void)
 {
-  // calculate reflection coeff. by samp divide by ref
   float new_gamma;
 
-  if (gamma_count ++  < decimated_tau) {
 #ifndef CALC_GAMMA_3
   new_gamma = vna_atan2f(acc_samp_s,acc_samp_c) / VNA_PI;
   if ((new_gamma - prev_gamma1) < -HALF_PHASE)
     new_gamma = new_gamma + FULL_PHASE;
   if ((new_gamma - prev_gamma1) > HALF_PHASE)
     new_gamma = new_gamma - FULL_PHASE;
-  gamma_aver[1] += new_gamma;
+  if (gamma_count  < decimated_tau)
+    gamma_aver[1] += new_gamma;
   prev_gamma1 = new_gamma;
 
-  phase_log[log_index++] = new_gamma;
+  if (gamma_count  < decimated_tau)
+    phase_log[log_index++] = new_gamma;
   if (log_index >= LOG_SIZE) log_index = 0;
 #endif
 
@@ -397,7 +398,8 @@ calculate_vectors(void)
     new_gamma = new_gamma + FULL_PHASE;
   if ((new_gamma - prev_gamma2) > HALF_PHASE)
     new_gamma = new_gamma - FULL_PHASE;
-  gamma_aver[2] += new_gamma;
+  if (gamma_count  < decimated_tau)
+    gamma_aver[2] += new_gamma;
   prev_gamma2 = new_gamma;
 
 #ifdef CALC_GAMMA_3
@@ -407,10 +409,10 @@ calculate_vectors(void)
     new_gamma = new_gamma + FULL_PHASE;
   if ((new_gamma - prev_gamma3) > HALF_PHASE)
     new_gamma = new_gamma - FULL_PHASE;
-  gamma_aver[3] += new_gamma;
+  if (gamma_count  < decimated_tau)
+    gamma_aver[3] += new_gamma;
   prev_gamma3 = new_gamma;
 #endif
-  }
 #ifdef SIDE_CHANNEL
   new_gamma =  - vna_atan2f((acc_samp_c2 * (float)acc_ref_c2 + acc_samp_s2 * (float)acc_ref_s2),
                          (acc_samp_s2 * (double)acc_ref_c2 - acc_samp_c2 * (double)acc_ref_s2)) / VNA_PI;
@@ -422,9 +424,8 @@ calculate_vectors(void)
   prev_gammas = new_gamma;
 
 #endif
-  // gamma[0] =
+
   amp_a = vna_sqrtf((float)acc_ref_c * (float)acc_ref_c + (float)acc_ref_s*(float)acc_ref_s);
-//  gamma[1] =
   amp_b = vna_sqrtf((float)acc_samp_c * (float)acc_samp_c + (float)acc_samp_s*(float)acc_samp_s);
 #ifdef SIDE_CHANNEL
   amp_sa = vna_sqrtf((float)acc_ref_c2 * (float)acc_ref_c2 + (float)acc_ref_s2*(float)acc_ref_s2);
@@ -451,6 +452,8 @@ calculate_vectors(void)
     acc_prev_s = acc_ref_s;
     acc_prev_c = acc_ref_c;
   }
+  gamma_count++;
+
 }
 
 float get_freq_a(void)
