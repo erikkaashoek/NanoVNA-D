@@ -1227,6 +1227,10 @@ void apply_VNA_mode(uint16_t idx, uint16_t value) {
     case VNA_MODE_UNWRAP:
       if (VNA_MODE(VNA_MODE_UNWRAP))
         reset_phase_unwrap();
+      break;
+    case VNA_MODE_SIDE_CHANNEL:
+      update_frequencies();
+      break;
   }
 }
 

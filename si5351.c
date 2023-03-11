@@ -617,7 +617,7 @@ si5351_set_frequency(uint32_t freq, uint8_t drive_strength)
       // Calculate and set CH0 and CH1 divider
       si5351_set_frequency_fixedpll(OFREQ_CHANNEL, (uint64_t)omul * cc_xtal() * pll_n, ofreq*FREQ_SCALE, rdiv, ods | SI5351_CLK_PLL_SELECT_A);
 #ifdef SIDE_CHANNEL
-//      if (VNA_MODE(VNA_MODE_SIDE))
+      if (VNA_MODE(VNA_MODE_SIDE))
         si5351_set_frequency_fixedpll(FREQ_CHANNEL, (uint64_t)mul * cc_xtal() * pll_n,  freq*FREQ_SCALE, rdiv, ods | SI5351_CLK_PLL_SELECT_A);
 #endif
       break;
@@ -649,14 +649,16 @@ si5351_set_frequency(uint32_t freq, uint8_t drive_strength)
       // Calculate and set CH0 and CH1 PLL freq
       si5351_setupPLL_freq(SI5351_REG_PLL_A, (uint64_t)ofreq * fdiv * FREQ_SCALE, omul*cc_xtal() );  // set PLLA freq = (ofreq/omul)*fdiv
 #ifdef SIDE_CHANNEL
-      si5351_setupPLL_freq(SI5351_REG_PLL_B, (uint64_t) freq * fdiv * FREQ_SCALE,  mul*cc_xtal() );  // set PLLB freq = ( freq/ mul)*fdiv
+      if (VNA_MODE(VNA_MODE_SIDE))
+        si5351_setupPLL_freq(SI5351_REG_PLL_B, (uint64_t) freq * fdiv * FREQ_SCALE,  mul*cc_xtal() );  // set PLLB freq = ( freq/ mul)*fdiv
 #endif
       // Setup CH0 and CH1 constant fdiv divider at change
       if (band_s[current_band].div != band_s[band].div) {
         si5351_setupMultisynth(OFREQ_CHANNEL, fdiv, 0, 1, SI5351_R_DIV_1, ods | SI5351_CLK_PLL_SELECT_A);
   //      si5351_setupMultisynth(FREQ_CHANNEL, fdiv, 0, 1, SI5351_R_DIV_1, ods | SI5351_CLK_PLL_SELECT_A);
 #ifdef SIDE_CHANNEL
-        si5351_setupMultisynth( FREQ_CHANNEL, fdiv, 0, 1, SI5351_R_DIV_1,  ds | SI5351_CLK_PLL_SELECT_B);
+        if (VNA_MODE(VNA_MODE_SIDE))
+          si5351_setupMultisynth( FREQ_CHANNEL, fdiv, 0, 1, SI5351_R_DIV_1,  ds | SI5351_CLK_PLL_SELECT_B);
 #endif
       }
       // Calculate CH2 freq = CLK2_FREQUENCY, depend from calculated before CH1 PLLB = (freq/mul)*fdiv

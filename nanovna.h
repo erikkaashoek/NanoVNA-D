@@ -291,7 +291,7 @@ extern int missing_samples;
 extern uint32_t transform_count;
 extern uint32_t max_average_count;
 extern const char NANOVNA_VERSION[];
-
+extern void update_frequencies(void);
 void reset_phase_unwrap(void);
 
 /*

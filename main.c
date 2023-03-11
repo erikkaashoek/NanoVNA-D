@@ -112,7 +112,7 @@ static volatile vna_shellcmd_t  shell_function = 0;
 //static void cal_interpolate(int idx, freq_t f, float data[CAL_TYPE_COUNT][2]);
 static void transform_domain(uint16_t ch_mask);
 static uint16_t get_sweep_mask(void);
-static void update_frequencies(void);
+void update_frequencies(void);
 static int  set_frequency(freq_t freq);
 static void set_frequencies(freq_t start, freq_t stop, uint16_t points);
 static bool sweep(bool break_on_operation, uint16_t ch_mask);
@@ -2341,7 +2341,7 @@ update_marker_index(freq_t fstart, freq_t fstop, uint16_t points)
   }
 }
 #endif
-static void
+void
 update_frequencies(void)
 {
   freq_t start = get_sweep_frequency(ST_START);
