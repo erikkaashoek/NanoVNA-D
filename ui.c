@@ -1155,7 +1155,7 @@ const vna_mode_data_t vna_mode_data[] = {
   [VNA_MODE_SIDE_CHANNEL] = {0, REDRAW_AREA},
   [VNA_MODE_DUMP_SIDE]    = {0, REDRAW_AREA},
   [VNA_MODE_FREEZE_DISPLAY] = {0, REDRAW_AREA},
-  [VNA_MODE_SIDE]         = {0, REDRAW_AREA},
+  [VNA_MODE_INTERNAL_SIDE]= {0, REDRAW_AREA},
   [VNA_MODE_PNA]          = {0, REDRAW_AREA},
   [VNA_MODE_WIDE]         = {0, REDRAW_AREA | REDRAW_FREQUENCY},
   [VNA_MODE_UNWRAP]       = {0, REDRAW_AREA},
@@ -1228,7 +1228,8 @@ void apply_VNA_mode(uint16_t idx, uint16_t value) {
       if (VNA_MODE(VNA_MODE_UNWRAP))
         reset_phase_unwrap();
       break;
-    case VNA_MODE_SIDE_CHANNEL:
+    case VNA_MODE_INTERNAL_SIDE:
+      si5351_disable_output();
       update_frequencies();
       break;
   }
@@ -2102,7 +2103,7 @@ const menuitem_t menu_more_settings[] = {
   { MT_ADV_CALLBACK, KM_PULL_3,         "PULL 3\n" R_LINK_COLOR " %b.7F",           menu_keyboard_acb },
   { MT_ADV_CALLBACK, KM_PULL_4,         "PULL 4\n" R_LINK_COLOR " %b.7F",           menu_keyboard_acb },
 #ifdef SIDE_CHANNEL
-   { MT_ADV_CALLBACK, VNA_MODE_SIDE, "INTERNAL\nSIDE",                   menu_vna_mode_acb },
+   { MT_ADV_CALLBACK, VNA_MODE_INTERNAL_SIDE, "INTERNAL\nSIDE",                   menu_vna_mode_acb },
 #endif
   { MT_NEXT, 0, NULL, menu_back } // next-> menu_back
 };
