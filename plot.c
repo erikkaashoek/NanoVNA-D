@@ -2142,6 +2142,7 @@ draw_measurements(void)
   int x = 20;
   int y = 0;
   int dash = false;
+  int dash_p = false;
 
 //  int f_aver = FREQ_A_AVERAGE / get_tau();
 //  int f_aver = 0;
@@ -2173,15 +2174,20 @@ draw_measurements(void)
   int sign = true;
   if (level_a < MIN_LEVEL && level_b < MIN_LEVEL && (current_props._fft_mode == FFT_OFF || current_props._fft_mode == FFT_PHASE)) {
     dash = true;
+    dash_p = true;
     f = 0;
   } else if ((level_b < MIN_LEVEL  && current_props._fft_mode == FFT_OFF ) || current_props._fft_mode == FFT_AMP ) {
     lcd_printf(x,y+10, "   A Freq:  ");
     f = (((double)aver_freq_a) + (double)get_sweep_frequency(ST_CW)) / 1000000000;
     sign = false;
+    dash_p = true;
+#if 0
   } else if ((level_a < MIN_LEVEL  && current_props._fft_mode == FFT_OFF) || current_props._fft_mode == FFT_B) {
       lcd_printf(x,y+10, "   B Freq:  ");
-      f = (((double)aver_freq_a) + (double)get_sweep_frequency(ST_CW)) / 1000000000;
+      f = (((double)aver_freq_b) + (double)get_sweep_frequency(ST_CW)) / 1000000000;
       sign = false;
+      dash_p = true;
+#endif
   } else {
     lcd_printf(x,y+10, "B-A Freq:  ");
     f = (VNA_MODE(VNA_MODE_TRACE_AVER) ? aver_freq_d : last_freq_d) / 100;
@@ -2200,7 +2206,7 @@ draw_measurements(void)
   lcd_printf(x,y+10, "B-A Phase:");
   x = 100;
   f = ((VNA_MODE(VNA_MODE_TRACE_AVER) ? aver_phase_d : last_phase_d)/360.0)/ (float)get_sweep_frequency(ST_CW) * 1e4;
-  x = lcd_large(x, y, f, dash, 16, 24, true);
+  x = lcd_large(x, y, f, dash_p, 16, 24, true);
   lcd_printf(x,y, "ns");
   lcd_reset_right_border();
   missing_samples = false;
