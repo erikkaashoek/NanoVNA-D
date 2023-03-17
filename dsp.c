@@ -29,12 +29,15 @@ static sincos_t sincos_tbl[AUDIO_SAMPLES_COUNT][2];
 static sincos_t sincos_tbl2[AUDIO_SAMPLES_COUNT][2];
 #endif
 
+int shift_90 = 4;
+
 void generate_DSP_Table(int offset){
   float audio_freq  = AUDIO_ADC_FREQ;
   // N = offset * AUDIO_SAMPLES_COUNT / audio_freq; should be integer
   // AUDIO_SAMPLES_COUNT = N * audio_freq / offset; N - minimum integer value for get integer AUDIO_SAMPLES_COUNT
   // Bandwidth on one step = audio_freq / AUDIO_SAMPLES_COUNT
   float step = offset / audio_freq;
+  shift_90 = audio_freq/offset/4;
   float w = 0; //= step/2;
 #ifdef SIDE_CHANNEL
   float step2 = (offset *2 / 3) / audio_freq;
@@ -52,8 +55,8 @@ void generate_DSP_Table(int offset){
       sincos_tbl[i][1] = c*(float)(0x7ff0);
 #endif
     } else {
-      sincos_tbl[i][0] = s*32610.0f * 0.5f * (1-cosf(2*VNA_PI*i/AUDIO_SAMPLES_COUNT)) ;
-      sincos_tbl[i][1] = c*32610.0f * 0.5f * (1-cosf(2*VNA_PI*i/AUDIO_SAMPLES_COUNT)) ;
+      sincos_tbl[i][0] = s*32610.0f * 0.5f;// * (1-cosf(2*VNA_PI*i/AUDIO_SAMPLES_COUNT)) ;
+      sincos_tbl[i][1] = - c*32610.0f * 0.5f;// * (1-cosf(2*VNA_PI*i/AUDIO_SAMPLES_COUNT)) ;
     }
     w+=step;
 #ifdef SIDE_CHANNEL
@@ -68,7 +71,7 @@ void generate_DSP_Table(int offset){
 #endif
 #else
     sincos_tbl2[i][0] = s*32610.0f * 0.5f * (1-cosf(2*VNA_PI*i/AUDIO_SAMPLES_COUNT)) ;
-    sincos_tbl2[i][1] = c*32610.0f * 0.5f * (1-cosf(2*VNA_PI*i/AUDIO_SAMPLES_COUNT)) ;
+    sincos_tbl2[i][1] =  c*32610.0f * 0.5f * (1-cosf(2*VNA_PI*i/AUDIO_SAMPLES_COUNT)) ;
 #endif
     w2+=step2;
 #endif
@@ -253,6 +256,33 @@ static acc_t acc_ref_s2;
 static acc_t acc_ref_c2;
 #endif
 static float null_phase = 0.5;
+#define MAX_DELAY   8
+typedef struct {
+  union {
+    uint32_t packed;
+    struct {
+      int16_t ref;
+      int16_t samp;
+    } i;
+  };
+} sample_t;
+sample_t delay[8];
+uint16_t delay_loc = 0;
+
+int32_t sum_samp;
+int32_t sum_ref;
+int16_t dc_samp;
+int16_t dc_ref;
+
+//#define DEBUG_LOG
+#ifdef DEBUG_LOG
+int16_t s_q[100], s_i[100];
+int16_t r_q[100], r_i[100];
+int32_t m_a[100], m_b[100];
+int32_t r_a[100], r_b[100];
+#endif
+
+
 // Cortex M4 DSP instruction use
 #include "dsp.h"
 void
@@ -276,6 +306,9 @@ dsp_process(audio_sample_t *capture, size_t length)         // Accumulated (down
   if( current_props._fft_mode == FFT_B && (VNA_MODE(VNA_MODE_WIDE)))
     capture++;  // Switch to other channel
 
+
+  sum_samp = 0;
+  sum_ref = 0;
   do{
 
     if ((current_props._fft_mode == FFT_AMP || current_props._fft_mode == FFT_B) && (VNA_MODE(VNA_MODE_WIDE)) ) {
@@ -293,6 +326,8 @@ dsp_process(audio_sample_t *capture, size_t length)         // Accumulated (down
 #else
       int16_t *sc = (int16_t *)&sincos_tbl[i];
       int32_t sr = capture[i*2];
+      //    sr.i.samp -= dc_samp;
+      //    sr.i.ref -= dc_ref;
 #endif
 
       if (p_sweep < requested_points){
@@ -307,8 +342,30 @@ dsp_process(audio_sample_t *capture, size_t length)         // Accumulated (down
 
     } else {
 
-    int32_t sc = ((int32_t *)sincos_tbl)[i];
-    int32_t sr = ((int32_t *)capture)[i];
+    int32_t sc = ((int32_t *)sincos_tbl)[i];            // sin + cos << 16
+
+    sample_t sr; sr.packed = ((uint32_t *)capture)[i];               // left + right<<16
+#if 1
+    sample_t sr_delay = delay[delay_loc];
+#else
+    sample_t sr_delay; //= delay[delay_loc];
+    sr_delay.i.samp = 0;
+    sr_delay.i.ref = 0;
+#endif
+    sum_samp += sr.i.samp;
+    sum_ref += sr.i.ref ;
+    sr.i.samp -= dc_samp;
+    sr.i.ref -= dc_ref;
+
+
+
+    int32_t samp_qi = (0xffff & ((uint16_t)sr.i.samp)) | (sr_delay.i.samp <<16);
+    int32_t ref_qi = (0xffff & ((uint16_t)sr.i.ref)) | (sr_delay.i.ref <<16);
+
+
+
+//    sc = 5;
+//    samp_qi = 10<<16;
 
 // int32_t acc DSP functions, but int32 can overflow
 //    samp_s = __smlatb(sr, sc, samp_s); // samp_s+= smp * sin
@@ -316,10 +373,36 @@ dsp_process(audio_sample_t *capture, size_t length)         // Accumulated (down
 //    ref_s  = __smlabb(sr, sc, ref_s);  //  ref_s+= ref * sin
 //    ref_c  = __smlabt(sr, sc, ref_c);  //  ref_s+= ref * cos
 // int64_t acc DSP functions
-    acc_samp_s= __smlaltb(acc_samp_s, sr, sc ); // samp_s+= smp * sin
-    acc_samp_c= __smlaltt(acc_samp_c, sr, sc ); // samp_c+= smp * cos
-    acc_ref_s = __smlalbb( acc_ref_s, sr, sc ); //  ref_s+= ref * sin
-    acc_ref_c = __smlalbt( acc_ref_c, sr, sc ); //  ref_s+= ref * cos
+
+#ifdef DEBUG_LOG
+    acc_samp_s = 0;
+    acc_samp_c = 0;
+    if (i < 100) {
+    s_q[i] = samp_qi & 0xffff;
+    s_i[i] = 0xffff & (samp_qi >> 16);
+    r_q[i] = ref_qi & 0xffff;
+    r_i[i] = 0xffff & (ref_qi >> 16);
+    }
+#endif
+    acc_samp_s= __smlald(acc_samp_s, samp_qi, sc ); // samp_s+= qi[0]*sc[0]+iq[1]*sc[1] sample
+    acc_samp_c= __smlsldx(acc_samp_c,samp_qi, sc ); // samp_c+= qi[0]*sc[1]-qi[1]*sc[0] sample
+#ifdef DEBUG_LOG
+    if (i < 100) {
+    m_a[i] = acc_samp_s;
+    m_b[i] = acc_samp_c;
+    }
+    acc_ref_s = 0;
+    acc_ref_c = 0;
+#endif
+    acc_ref_s = __smlald( acc_ref_s, ref_qi, sc ); //  ref_s+= qi[0]*sc[0]+iq[1]*sc[1] ref
+    acc_ref_c = __smlsldx( acc_ref_c, ref_qi, sc ); //  ref_s+= qi[0]*sc[1]-qi[1]*sc[0] ref
+#ifdef DEBUG_LOG
+    if (i < 100) {
+    r_a[i] = acc_ref_s;
+    r_b[i] = acc_ref_c;
+    }
+#endif
+
 #ifdef SIDE_CHANNEL
     int32_t sc2 = ((int32_t *)sincos_tbl2)[i];
 // int32_t acc DSP functions, but int32 can overflow
@@ -328,14 +411,18 @@ dsp_process(audio_sample_t *capture, size_t length)         // Accumulated (down
 //    ref_s  = __smlabb(sr, sc, ref_s);  //  ref_s+= ref * sin
 //    ref_c  = __smlabt(sr, sc, ref_c);  //  ref_s+= ref * cos
 // int64_t acc DSP functions
-    acc_samp_s2= __smlaltb(acc_samp_s2, sr, sc2 ); // samp_s+= smp * sin
-    acc_samp_c2= __smlaltt(acc_samp_c2, sr, sc2 ); // samp_c+= smp * cos
-    acc_ref_s2 = __smlalbb( acc_ref_s2, sr, sc2 ); //  ref_s+= ref * sin
-    acc_ref_c2 = __smlalbt( acc_ref_c2, sr, sc2 ); //  ref_s+= ref * cos
+    acc_samp_s2= __smlaltb(acc_samp_s2, sr.packed, sc2 ); // samp_s+= smp * sin
+    acc_samp_c2= __smlaltt(acc_samp_c2, sr.packed, sc2 ); // samp_c+= smp * cos
+    acc_ref_s2 = __smlalbb( acc_ref_s2, sr.packed, sc2 ); //  ref_s+= ref * sin
+    acc_ref_c2 = __smlalbt( acc_ref_c2, sr.packed, sc2 ); //  ref_s+= ref * cos
 #endif
+    delay[delay_loc++] = sr;
+    if (delay_loc >= shift_90) delay_loc = 0;
     i++;
     }
   } while (i < length/2);
+  dc_samp = sum_samp / (int32_t)(length/2);
+  dc_ref = sum_ref / (int32_t)(length/2);
 // Accumulate result, for faster calc and prevent overflow reduce size to int32_t
 //  acc_samp_s+= (int32_t)(samp_s>>4);
 //  acc_samp_c+= (int32_t)(samp_c>>4);
@@ -403,7 +490,7 @@ calculate_vectors(void)
   prev_gamma2 = new_gamma;
 
 #ifdef CALC_GAMMA_3
-  new_gamma =  - vna_atan2f((acc_samp_c * (float)acc_ref_c + acc_samp_s * (float)acc_ref_s),
+  new_gamma =  vna_atan2f((acc_samp_c * (float)acc_ref_c + acc_samp_s * (float)acc_ref_s),
                          (acc_samp_s * (double)acc_ref_c - acc_samp_c * (double)acc_ref_s)) / VNA_PI;
   if ((new_gamma - prev_gamma3) < -HALF_PHASE)
     new_gamma = new_gamma + FULL_PHASE;
@@ -435,9 +522,9 @@ calculate_vectors(void)
 
   // calculate pll delta phase
   if (current_props._fft_mode == FFT_B )
-    new_gamma = vna_atan2f(acc_samp_s - acc_prev_s,acc_samp_c-acc_prev_c) / VNA_PI;
+    new_gamma = -vna_atan2f(acc_samp_s - acc_prev_s,acc_samp_c-acc_prev_c) / VNA_PI;
   else
-    new_gamma = vna_atan2f(acc_ref_s - acc_prev_s,acc_ref_c-acc_prev_c) / VNA_PI;
+    new_gamma = -vna_atan2f(acc_ref_s - acc_prev_s,acc_ref_c-acc_prev_c) / VNA_PI;
   float delta_gamma = new_gamma - prev_gamma_pll;
   if ((delta_gamma) < -HALF_PHASE)
     delta_gamma = delta_gamma + FULL_PHASE;

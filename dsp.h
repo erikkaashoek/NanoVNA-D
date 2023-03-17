@@ -127,3 +127,67 @@ __attribute__((always_inline)) __STATIC_INLINE  int64_t __smlaltt(int64_t acc, i
     : [x] "r" (x), [y] "r" (y) : );
   return r.i_rep;
 }
+
+// __smlald inserts a SMLALTT instruction. __smlaltt returns the equivalent of
+//  int64_t res = x[0] * y[0] + x[1]*y[1] + acc
+//  where [0] is the lower 16 bits and [1] is the upper 16 bits.
+__attribute__((always_inline)) __STATIC_INLINE  int64_t __smlald(int64_t acc, int32_t x, int32_t y)
+{
+  register union {
+    struct { uint32_t lo; uint32_t hi; } s_rep;
+    int64_t i_rep;
+  } r;
+  r.i_rep = acc;
+  __asm__ ("smlald %[r_lo], %[r_hi], %[x], %[y]"
+    : [r_lo] "+r" (r.s_rep.lo), [r_hi] "+r" (r.s_rep.hi)
+    : [x] "r" (x), [y] "r" (y) : );
+  return r.i_rep;
+}
+
+// __smlaldx inserts a SMLALTT instruction. __smlaltt returns the equivalent of
+//  int64_t res = x[0] * y[1] + x[1]*y[0] + acc
+//  where [0] is the lower 16 bits and [1] is the upper 16 bits.
+__attribute__((always_inline)) __STATIC_INLINE  int64_t __smlaldx(int64_t acc, int32_t x, int32_t y)
+{
+  register union {
+    struct { uint32_t lo; uint32_t hi; } s_rep;
+    int64_t i_rep;
+  } r;
+  r.i_rep = acc;
+  __asm__ ("smlaldx %[r_lo], %[r_hi], %[x], %[y]"
+    : [r_lo] "+r" (r.s_rep.lo), [r_hi] "+r" (r.s_rep.hi)
+    : [x] "r" (x), [y] "r" (y) : );
+  return r.i_rep;
+}
+
+// __smlsldx inserts a SMLALTT instruction. __smlaltt returns the equivalent of
+//  int64_t res = x[0] * y[1] - x[1]*y[0] + acc
+//  where [0] is the lower 16 bits and [1] is the upper 16 bits.
+__attribute__((always_inline)) __STATIC_INLINE  int64_t __smlsldx(int64_t acc, int32_t x, int32_t y)
+{
+  register union {
+    struct { uint32_t lo; uint32_t hi; } s_rep;
+    int64_t i_rep;
+  } r;
+  r.i_rep = acc;
+  __asm__ ("smlsldx %[r_lo], %[r_hi], %[x], %[y]"
+    : [r_lo] "+r" (r.s_rep.lo), [r_hi] "+r" (r.s_rep.hi)
+    : [x] "r" (x), [y] "r" (y) : );
+  return r.i_rep;
+}
+
+// __smlsld inserts a SMLALTT instruction. __smlaltt returns the equivalent of
+//  int64_t res = x[0] * y[0] - x[1]*y[1] + acc
+//  where [0] is the lower 16 bits and [1] is the upper 16 bits.
+__attribute__((always_inline)) __STATIC_INLINE  int64_t __smlsld(int64_t acc, int32_t x, int32_t y)
+{
+  register union {
+    struct { uint32_t lo; uint32_t hi; } s_rep;
+    int64_t i_rep;
+  } r;
+  r.i_rep = acc;
+  __asm__ ("smlsld %[r_lo], %[r_hi], %[x], %[y]"
+    : [r_lo] "+r" (r.s_rep.lo), [r_hi] "+r" (r.s_rep.hi)
+    : [x] "r" (x), [y] "r" (y) : );
+  return r.i_rep;
+}
