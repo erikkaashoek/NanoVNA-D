@@ -347,20 +347,20 @@ dsp_process(audio_sample_t *capture, size_t length)         // Accumulated (down
 
 typedef double calc_t;
 
-//volatile float prev_gamma3 = -5.0;
+//volatile float prev_delta_angle = -5.0;
 //volatile float curr_gamma3 = -5.0;
 //volatile float prev_speed = -5.0;
 //volatile float accell = 0;
 volatile float gamma_aver[4];
 volatile int gamma_count = 0;
 volatile int decimated_tau;
-volatile float gamma_delta_pll;
+volatile float pll_delta_phase;
 extern float amp_a;
 extern float amp_b;
-float prev_gamma1, prev_gamma2, prev_gamma3, prev_gamma_pll;
+float prev_samp_angle, prev_ref_angle, prev_delta_angle, prev_pll_delta_angle;
 #ifdef SIDE_CHANNEL
-volatile float gamma_aver_s;
-float prev_gammas;
+volatile float sum_side_delta_angle;
+float prev_side_delta_angle;
 #endif
 
 #define LOG_SIZE    100
@@ -376,52 +376,55 @@ int log_index = 0;
 void
 calculate_vectors(void)
 {
-  float new_gamma;
 
 #ifndef CALC_GAMMA_3
-  new_gamma = vna_atan2f(acc_samp_s,acc_samp_c) / VNA_PI;
-  if ((new_gamma - prev_gamma1) < -HALF_PHASE)
-    new_gamma = new_gamma + FULL_PHASE;
-  if ((new_gamma - prev_gamma1) > HALF_PHASE)
-    new_gamma = new_gamma - FULL_PHASE;
+  float samp_angle;
+  samp_angle = vna_atan2f(acc_samp_s,acc_samp_c) / VNA_PI;
+  if ((samp_angle - prev_samp_angle) < -HALF_PHASE)
+    samp_angle = samp_angle + FULL_PHASE;
+  if ((samp_angle - prev_samp_angle) > HALF_PHASE)
+    samp_angle = samp_angle - FULL_PHASE;
   if (gamma_count  < decimated_tau)
-    gamma_aver[1] += new_gamma;
-  prev_gamma1 = new_gamma;
+    gamma_aver[1] += samp_angle;
+  prev_samp_angle = samp_angle;
 
   if (gamma_count  < decimated_tau)
-    phase_log[log_index++] = new_gamma;
+    phase_log[log_index++] = samp_angle;
   if (log_index >= LOG_SIZE) log_index = 0;
 #endif
 
-  new_gamma = vna_atan2f(acc_ref_s,acc_ref_c) / VNA_PI;
-  if ((new_gamma - prev_gamma2) < -HALF_PHASE)
-    new_gamma = new_gamma + FULL_PHASE;
-  if ((new_gamma - prev_gamma2) > HALF_PHASE)
-    new_gamma = new_gamma - FULL_PHASE;
+  float ref_angle;
+  ref_angle = vna_atan2f(acc_ref_s,acc_ref_c) / VNA_PI;
+  if ((ref_angle - prev_ref_angle) < -HALF_PHASE)
+    ref_angle = ref_angle + FULL_PHASE;
+  if ((ref_angle - prev_ref_angle) > HALF_PHASE)
+    ref_angle = ref_angle - FULL_PHASE;
   if (gamma_count  < decimated_tau)
-    gamma_aver[2] += new_gamma;
-  prev_gamma2 = new_gamma;
+    gamma_aver[2] += ref_angle;
+  prev_ref_angle = ref_angle;
 
 #ifdef CALC_GAMMA_3
-  new_gamma =  - vna_atan2f((acc_samp_c * (float)acc_ref_c + acc_samp_s * (float)acc_ref_s),
+  float delta_angle;
+  delta_angle =  - vna_atan2f((acc_samp_c * (float)acc_ref_c + acc_samp_s * (float)acc_ref_s),
                          (acc_samp_s * (double)acc_ref_c - acc_samp_c * (double)acc_ref_s)) / VNA_PI;
-  if ((new_gamma - prev_gamma3) < -HALF_PHASE)
-    new_gamma = new_gamma + FULL_PHASE;
-  if ((new_gamma - prev_gamma3) > HALF_PHASE)
-    new_gamma = new_gamma - FULL_PHASE;
+  if ((delta_angle - prev_delta_angle) < -HALF_PHASE)
+    delta_angle = delta_angle + FULL_PHASE;
+  if ((delta_angle - prev_delta_angle) > HALF_PHASE)
+    delta_angle = delta_angle - FULL_PHASE;
   if (gamma_count  < decimated_tau)
-    gamma_aver[3] += new_gamma;
-  prev_gamma3 = new_gamma;
+    gamma_aver[3] += delta_angle;
+  prev_delta_angle = delta_angle;
 #endif
 #ifdef SIDE_CHANNEL
-  new_gamma =  - vna_atan2f((acc_samp_c2 * (float)acc_ref_c2 + acc_samp_s2 * (float)acc_ref_s2),
+  float side_delta_angle;
+  side_delta_angle =  - vna_atan2f((acc_samp_c2 * (float)acc_ref_c2 + acc_samp_s2 * (float)acc_ref_s2),
                          (acc_samp_s2 * (double)acc_ref_c2 - acc_samp_c2 * (double)acc_ref_s2)) / VNA_PI;
-  while ((new_gamma - prev_gammas) < -HALF_PHASE)
-    new_gamma = new_gamma + FULL_PHASE;
-  while ((new_gamma - prev_gammas) > HALF_PHASE)
-    new_gamma = new_gamma - FULL_PHASE;
-  gamma_aver_s += new_gamma;
-  prev_gammas = new_gamma;
+  while ((side_delta_angle - prev_side_delta_angle) < -HALF_PHASE)
+    side_delta_angle = side_delta_angle + FULL_PHASE;
+  while ((side_delta_angle - prev_side_delta_angle) > HALF_PHASE)
+    side_delta_angle = side_delta_angle - FULL_PHASE;
+  sum_side_delta_angle += side_delta_angle;
+  prev_side_delta_angle = side_delta_angle;
 
 #endif
 
@@ -434,17 +437,18 @@ calculate_vectors(void)
 
 
   // calculate pll delta phase
+  float pll_delta_angle;
   if (current_props._fft_mode == FFT_B )
-    new_gamma = vna_atan2f(acc_samp_s - acc_prev_s,acc_samp_c-acc_prev_c) / VNA_PI;
+    pll_delta_angle = vna_atan2f(acc_samp_s - acc_prev_s,acc_samp_c-acc_prev_c) / VNA_PI;
   else
-    new_gamma = vna_atan2f(acc_ref_s - acc_prev_s,acc_ref_c-acc_prev_c) / VNA_PI;
-  float delta_gamma = new_gamma - prev_gamma_pll;
-  if ((delta_gamma) < -HALF_PHASE)
-    delta_gamma = delta_gamma + FULL_PHASE;
-  if ((delta_gamma) > HALF_PHASE)
-    delta_gamma = delta_gamma - FULL_PHASE;
-  gamma_delta_pll = delta_gamma;
-  prev_gamma_pll = new_gamma;
+    pll_delta_angle = vna_atan2f(acc_ref_s - acc_prev_s,acc_ref_c-acc_prev_c) / VNA_PI;
+  float pll_delta_angle_increment = pll_delta_angle - prev_pll_delta_angle;
+  if ((pll_delta_angle_increment) < -HALF_PHASE)
+    pll_delta_angle_increment = pll_delta_angle_increment + FULL_PHASE;
+  if ((pll_delta_angle_increment) > HALF_PHASE)
+    pll_delta_angle_increment = pll_delta_angle_increment - FULL_PHASE;
+  pll_delta_phase = pll_delta_angle_increment;
+  prev_pll_delta_angle = pll_delta_angle;
   if (current_props._fft_mode == FFT_B ) {
     acc_prev_s = acc_samp_s;
     acc_prev_c = acc_samp_c;
@@ -458,7 +462,7 @@ calculate_vectors(void)
 
 float get_freq_a(void)
 {
-  float df = gamma_delta_pll * (AUDIO_ADC_FREQ>>1);
+  float df = pll_delta_phase * (AUDIO_ADC_FREQ>>1);
   df /= (config._bandwidth+SAMPLE_OVERHEAD) * AUDIO_SAMPLES_COUNT;
   return (df);
 }
@@ -482,16 +486,11 @@ calculate_gamma(float gamma[4], uint16_t tau)
 #ifndef CALC_GAMMA_3
   gamma[1] += null_phase;
 #endif
-  if (gamma[1] > HALF_PHASE)
-    gamma[1] -= FULL_PHASE;
-  if (gamma[1] < -HALF_PHASE)
-    gamma[1] += FULL_PHASE;
+  WRAP_FULL_PHASE(gamma[1]);
 #endif
+
   gamma[2] = gamma_aver[2]/decimated_tau;
-  if (gamma[2] > HALF_PHASE)
-    gamma[2] -= FULL_PHASE;
-  if (gamma[2] < -HALF_PHASE)
-    gamma[2] += FULL_PHASE;
+  WRAP_FULL_PHASE(gamma[2]);
 
 #ifdef CALC_GAMMA_3
   gamma[3] = gamma_aver[3]/decimated_tau + null_phase;
@@ -500,19 +499,13 @@ calculate_gamma(float gamma[4], uint16_t tau)
 #else
   gamma[3] = gamma[2] - gamma[1] ;
 #endif
-  if (gamma[3] > HALF_PHASE)
-    gamma[3] -= FULL_PHASE;
-  if (gamma[3] < -HALF_PHASE)
-    gamma[3] += FULL_PHASE;
-
+  WRAP_FULL_PHASE(gamma[3]);
 
 #ifdef SIDE_CHANNEL
   if (VNA_MODE(VNA_MODE_SIDE_CHANNEL)) {
-    float temp = gamma_aver_s/tau;
-    if (temp > HALF_PHASE)
-      temp -= FULL_PHASE;
-    if (temp < -HALF_PHASE)
-      temp += FULL_PHASE;
+    float temp = sum_side_delta_angle/tau;
+    WRAP_FULL_PHASE(temp);
+
 #define S_AVER 3
     if (my_fabs(temp - side_aver) > 0.001)
       side_aver = temp;
@@ -597,13 +590,13 @@ reset_averaging(void)
   gamma_aver[2] = 0.0;
   gamma_aver[3] = 0.0;
   gamma_count = 0;
-  prev_gamma1 = 0;
-  prev_gamma2 = 0;
-  prev_gamma3 = 0;
-//  prev_gamma_pll = 0;
+  prev_samp_angle = 0;
+  prev_ref_angle = 0;
+  prev_delta_angle = 0;
+//  prev_pll_delta_angle = 0;
 #ifdef SIDE_CHANNEL
-  gamma_aver_s = 0.0;
-  prev_gammas = 0.0;
+  sum_side_delta_angle = 0.0;
+  prev_side_delta_angle = 0.0;
 #endif
 }
 

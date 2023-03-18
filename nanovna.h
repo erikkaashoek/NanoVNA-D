@@ -550,6 +550,14 @@ typedef int16_t  audio_sample_t;
 #define HALF_PHASE  1.0
 #define FULL_PHASE  2.0
 
+// gamma
+#define SIDE_PHASE  0
+#define B_PHASE     1
+#define A_PHASE     2
+#define DELTA_PHASE 3
+
+#define WRAP_FULL_PHASE(X)   if ((X) > HALF_PHASE) (X) -= FULL_PHASE; if ((X) < -HALF_PHASE) (X) += FULL_PHASE;
+
 void dsp_process(audio_sample_t *src, size_t len);
 void reset_dsp_accumerator(void);
 void reset_averaging(void);

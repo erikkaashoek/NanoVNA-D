@@ -373,12 +373,12 @@ static float sample_b(int i, const float *v) {
 //**************************************************************************************
 static float phase_a(int i, const float *v) {
   (void) i;
-  return(v[1]*180.0f);
+  return(v[2]*180.0f);
 }
 
 static float phase_b(int i, const float *v) {
   (void) i;
-  return(v[2]*180.0f);
+  return(v[1]*180.0f);
 }
 
 static float get_phase(float v)
