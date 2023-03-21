@@ -351,17 +351,20 @@ typedef double calc_t;
 //volatile float curr_gamma3 = -5.0;
 //volatile float prev_speed = -5.0;
 //volatile float accell = 0;
-volatile float gamma_aver[4];
+//volatile float gamma_aver[4];
+volatile float summed_samp_angle;
+volatile float summed_ref_angle;
+volatile float summed_delta_angle;
+#ifdef SIDE_CHANNEL
+volatile float sum_side_delta_angle;
+float prev_side_delta_angle;
+#endif
 volatile int gamma_count = 0;
 volatile int decimated_tau;
 volatile float pll_delta_phase;
 extern float amp_a;
 extern float amp_b;
 float prev_samp_angle, prev_ref_angle, prev_delta_angle, prev_pll_delta_angle;
-#ifdef SIDE_CHANNEL
-volatile float sum_side_delta_angle;
-float prev_side_delta_angle;
-#endif
 
 #define LOG_SIZE    100
 volatile float phase_log[LOG_SIZE];
@@ -385,7 +388,7 @@ calculate_vectors(void)
   if ((samp_angle - prev_samp_angle) > HALF_PHASE)
     samp_angle = samp_angle - FULL_PHASE;
   if (gamma_count  < decimated_tau)
-    gamma_aver[1] += samp_angle;
+    summed_samp_angle += samp_angle;
   prev_samp_angle = samp_angle;
 
   if (gamma_count  < decimated_tau)
@@ -400,7 +403,7 @@ calculate_vectors(void)
   if ((ref_angle - prev_ref_angle) > HALF_PHASE)
     ref_angle = ref_angle - FULL_PHASE;
   if (gamma_count  < decimated_tau)
-    gamma_aver[2] += ref_angle;
+    summed_ref_angle += ref_angle;
   prev_ref_angle = ref_angle;
 
 #ifdef CALC_GAMMA_3
@@ -412,7 +415,7 @@ calculate_vectors(void)
   if ((delta_angle - prev_delta_angle) > HALF_PHASE)
     delta_angle = delta_angle - FULL_PHASE;
   if (gamma_count  < decimated_tau)
-    gamma_aver[3] += delta_angle;
+    summed_delta_angle += delta_angle;
   prev_delta_angle = delta_angle;
 #endif
 #ifdef SIDE_CHANNEL
@@ -482,18 +485,18 @@ calculate_gamma(float gamma[4], uint16_t tau)
 {
   decimated_tau = tau / config.decimation;
 #ifndef CALC_GAMMA_3
-  gamma[1] = gamma_aver[1]/tau;
+  gamma[1] = summed_samp_angle/tau;
 #ifndef CALC_GAMMA_3
   gamma[1] += null_phase;
 #endif
   WRAP_FULL_PHASE(gamma[1]);
 #endif
 
-  gamma[2] = gamma_aver[2]/decimated_tau;
+  gamma[2] = summed_ref_angle/decimated_tau;
   WRAP_FULL_PHASE(gamma[2]);
 
 #ifdef CALC_GAMMA_3
-  gamma[3] = gamma_aver[3]/decimated_tau + null_phase;
+  gamma[3] = summed_delta_angle/decimated_tau + null_phase;
   if (VNA_MODE(VNA_MODE_SIDE_CHANNEL) && level_sa > -30)
     gamma[3] -= side_aver;
 #else
@@ -533,9 +536,9 @@ calculate_gamma(float gamma[4], uint16_t tau)
 
 void calculate_subsamples(float gamma[4], uint16_t tau)
 {
-  decimated_tau = (AUDIO_BUFFER_LEN/2) * tau / config.decimation;
-  gamma[2] = (float)acc_samp_s/(float)decimated_tau;
-  gamma[3] = (float)acc_ref_s/(float)decimated_tau;
+  int used_samples = (AUDIO_BUFFER_LEN/2) * tau / config.decimation;
+  gamma[2] = (float)acc_samp_s/(float)used_samples;
+  gamma[3] = (float)acc_ref_s/(float)used_samples;
 }
 
 void
@@ -585,10 +588,9 @@ reset_dsp_accumerator(void)
 void
 reset_averaging(void)
 {
-  gamma_aver[0] = 0.0;
-  gamma_aver[1] = 0.0;
-  gamma_aver[2] = 0.0;
-  gamma_aver[3] = 0.0;
+  summed_samp_angle = 0.0;
+  summed_ref_angle = 0.0;
+  summed_delta_angle = 0.0;
   gamma_count = 0;
   prev_samp_angle = 0;
   prev_ref_angle = 0;
