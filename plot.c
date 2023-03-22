@@ -322,14 +322,14 @@ int l_gain = 20,
     r_gain = 20;
 
 
-static float logmag_a(int i, const float *v) {
+static phase_t logmag_a(int i, const phase_t *v) {
   (void) i;
   (void) v;
 //  return 2*vna_log10f_x_10(v[0]*(1<<AUDIO_SHIFT)/config._bandwidth) - 210.0f;
   return (2*vna_log10f_x_10(amp_a*(1<<AUDIO_SHIFT)/config._bandwidth) - 210.0f) - (l_gain-20) / 2.0;
 }
 
-static float logmag_b(int i, const float *v) {
+static phase_t logmag_b(int i, const phase_t *v) {
   (void) i;
   (void) v;
 //  return 2*vna_log10f_x_10(v[1]*(1<<AUDIO_SHIFT)/config._bandwidth) - 210.0f;
@@ -337,14 +337,14 @@ static float logmag_b(int i, const float *v) {
 }
 
 #ifdef SIDE_CHANNEL
-static float logmag_sa(int i, const float *v) {
+static phase_t logmag_sa(int i, const phase_t *v) {
   (void) i;
   (void) v;
 //  return 2*vna_log10f_x_10(v[1]*(1<<AUDIO_SHIFT)/config._bandwidth) - 210.0f;
   return (2*vna_log10f_x_10(amp_sa*(1<<AUDIO_SHIFT)/config._bandwidth) - 210.0f) - (l_gain-20) / 2.0;
 }
 
-static float logmag_sb(int i, const float *v) {
+static phase_t logmag_sb(int i, const phase_t *v) {
   (void) i;
   (void) v;
 //  return 2*vna_log10f_x_10(v[1]*(1<<AUDIO_SHIFT)/config._bandwidth) - 210.0f;
@@ -352,17 +352,17 @@ static float logmag_sb(int i, const float *v) {
 }
 #endif
 
-static float value(int i, const float *v) {
+static phase_t value(int i, const phase_t *v) {
   (void) i;
   return(v[0]);
 }
 
-static float sample_a(int i, const float *v) {
+static phase_t sample_a(int i, const phase_t *v) {
   (void) i;
   return(v[0]);
 }
 
-static float sample_b(int i, const float *v) {
+static phase_t sample_b(int i, const phase_t *v) {
   (void) i;
   return(v[1]);
 }
@@ -371,19 +371,19 @@ static float sample_b(int i, const float *v) {
 //**************************************************************************************
 // PHASE angle in degree = atan2(im, re) * 180 / PI
 //**************************************************************************************
-static float phase_a(int i, const float *v) {
+static phase_t phase_a(int i, const phase_t *v) {
   (void) i;
   return(v[2]*180.0f);
 }
 
-static float phase_b(int i, const float *v) {
+static phase_t phase_b(int i, const phase_t *v) {
   (void) i;
   return(v[1]*180.0f);
 }
 
-static float get_phase(float v)
+static phase_t get_phase(phase_t v)
 {
-  float p = v;
+  phase_t p = v;
   while (p > 1.0)
     p -= 2.0;
   while (p<-1.0)
@@ -396,9 +396,9 @@ static float get_phase(float v)
   return p;
 }
 
-static float phase_d(int i, const float *v) {
+static phase_t phase_d(int i, const phase_t *v) {
   (void) i;
-  float p = v[3];
+  phase_t p = v[3];
   while (p >= 1)
     p -= 2.0;
   while (p<-1)
@@ -412,9 +412,9 @@ static float phase_d(int i, const float *v) {
 }
 
 #ifdef SIDE_CHANNEL
-static float phase_s(int i, const float *v) {
+static phase_t phase_s(int i, const phase_t *v) {
   (void) i;
-  float p = v[0];
+  phase_t p = v[0];
   while (p >= 1)
     p -= 2.0;
   while (p<-1)
@@ -424,26 +424,26 @@ static float phase_s(int i, const float *v) {
 }
 #endif
 
-static float wraps = 0;
-static float r_start;
+static phase_t wraps = 0;
+static phase_t r_start;
 
-static float correction(int i, const float *v) {
+static phase_t correction(int i, const phase_t *v) {
   (void) i;
-  float p = get_phase(v[3]);
-  float c = sinf( p*2.0*VNA_PI + config.pull[PULL_OFFSET]) * config.pull[PULL_FUNDAMENTAL];
+  phase_t p = get_phase(v[3]);
+  phase_t c = sinf( p*2.0*VNA_PI + config.pull[PULL_OFFSET]) * config.pull[PULL_FUNDAMENTAL];
   c += sinf( (2*p)*2.0*VNA_PI + config.pull[PULL_SECOND_SHIFT]) * config.pull[PULL_SECOND];
   return(c);
 }
 
-static float residue(int i, const float *v) {
+static phase_t residue(int i, const phase_t *v) {
   (void) i;
-  float p = get_phase(v[3]);
+  phase_t p = get_phase(v[3]);
   if (i == 0) {
     wraps = 0;
     r_start = p;
     return(0.0);
   }
-  float pp = get_phase(v[-1]);
+  phase_t pp = get_phase(v[-1]);
   if (p > pp + 0.5) {
     wraps--;
   }
@@ -453,9 +453,9 @@ static float residue(int i, const float *v) {
   return p + wraps - i * aver_freq_d * config.tau*(config._bandwidth+SAMPLE_OVERHEAD) * AUDIO_SAMPLES_COUNT / AUDIO_ADC_FREQ - r_start;
 }
 
-static float transform_d(int i, const float *v) {
+static phase_t transform_d(int i, const phase_t *v) {
   (void)i;
-  float t = v[1];
+  phase_t t = v[1];
   if (t < 0)
     t = -t;
   if (t == 0)
@@ -463,9 +463,9 @@ static float transform_d(int i, const float *v) {
   return (2*vna_log10f_x_10(t) + 16);
 }
 
-static float transform_a(int i, const float *v) {
+static phase_t transform_a(int i, const phase_t *v) {
   (void)i;
-  float t = v[1];
+  phase_t t = v[1];
   if (t < 0)
     t = -t;
   if (t == 0)
@@ -477,7 +477,7 @@ static float transform_a(int i, const float *v) {
 //**************************************************************************************
 // Delta frequency
 //**************************************************************************************
-static float freq_a(int i, const float *v) {
+static phase_t freq_a(int i, const phase_t *v) {
   (void) i;
   if (i == p_sweep-1){
     i = p_sweep-2;
@@ -486,7 +486,7 @@ static float freq_a(int i, const float *v) {
     v--;
     v--;
   }
-  float df = v[6] - v[2];
+  phase_t df = v[6] - v[2];
   if (df >= 1.0)
     df -= 2.0;
   if (df <= -1.0)
@@ -497,7 +497,7 @@ static float freq_a(int i, const float *v) {
   return (df);
 }
 
-static float freq_b(int i, const float *v) {
+static phase_t freq_b(int i, const phase_t *v) {
   (void) i;
   if (i == p_sweep-1){
     i = p_sweep-2;
@@ -506,7 +506,7 @@ static float freq_b(int i, const float *v) {
     v--;
     v--;
   }
-  float df = v[5] - v[1];
+  phase_t df = v[5] - v[1];
   if (df >= 1.0)
     df -= 2.0;
   if (df <= -1.0)
@@ -517,7 +517,7 @@ static float freq_b(int i, const float *v) {
   return (df);
 }
 
-static float freq_d(int i, const float *v) {
+static phase_t freq_d(int i, const phase_t *v) {
   (void) i;
   if (i == p_sweep-1){
     i = p_sweep-2;
@@ -527,13 +527,13 @@ static float freq_d(int i, const float *v) {
     v--;
   }
 #if 0
-  float df_a = (v[6] - v[2])*0.5f;
+  phase_t df_a = (v[6] - v[2])*0.5f;
   if (df_a > 0.5)
     df_a -= 1.0;
   if (df_a < -0.5)
     df_a += 1.0;
 
-  float df_b = (v[7] - v[3])*0.5f;
+  phase_t df_b = (v[7] - v[3])*0.5f;
   if (df_b > 0.5)
     df_b -= 1.0;
   if (df_b < -0.5)
@@ -546,17 +546,17 @@ static float freq_d(int i, const float *v) {
   df_b /= (config._bandwidth+2) * AUDIO_SAMPLES_COUNT;
 
 
-  float ratio = df_a - df_b;
+  phase_t ratio = df_a - df_b;
   return (ratio);
 #else
-  float df = df_a - df_b;
+  phase_t df = df_a - df_b;
 
   df *= AUDIO_ADC_FREQ;
   df /= (config._bandwidth+2) * AUDIO_SAMPLES_COUNT;
   return (df);
 #endif
 #else
-  float df = v[7] - v[3];
+  phase_t df = v[7] - v[3];
   if (df >= 1.0)
     df -= 2.0;
   if (df < -1.0)
@@ -1004,7 +1004,7 @@ trace_print_value_string(int xpos, int ypos, int t, int index, int index_ref)
   // Check correct input
   uint8_t type = trace[t].type;
   if (type >= MAX_TRACE_TYPE) return;
-  float (*array)[4] = measured[0]; // trace[t].channel;
+  phase_t (*array)[4] = measured[0]; // trace[t].channel;
 //  float *coeff = array[index];
   const char *format = index_ref >= 0 ? trace_info_list[type].dformat : trace_info_list[type].format; // Format string
   get_value_cb_t c = trace_info_list[type].get_value_cb;

@@ -254,7 +254,7 @@ static void flush_disk_log(void);
 static char append_filename[FF_LFN_BUF];
 
 #define DISK_LOG_SIZE   64
-static double disk_log_data[DISK_LOG_SIZE];
+static phase_t disk_log_data[DISK_LOG_SIZE];
 static int disk_log_index = 0;
 
 
@@ -1856,7 +1856,7 @@ void flush_disk_log(void)
   disk_log_index = 0;
 }
 
-void disk_log(float p)
+void disk_log(phase_t p)
 {
   if (append_filename[0] == 0)
     return;

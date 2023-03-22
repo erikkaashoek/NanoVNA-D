@@ -270,14 +270,15 @@
 #endif
 #endif
 
+typedef float phase_t;
 
 extern float aver_freq_a;
-extern float aver_phase_d;
+extern phase_t aver_phase_d;
 extern float aver_freq_d;
-extern float last_phase_d;
+extern phase_t last_phase_d;
 extern float last_freq_d;
 #ifdef SIDE_CHANNEL
-extern float aver_phase_s;
+extern phase_t aver_phase_s;
 #endif
 
 #define MIN_LEVEL   (-50)
@@ -338,7 +339,7 @@ typedef uint32_t freq_t;
 #define POINTS_COUNT_DEFAULT   SWEEP_POINTS_MAX
 #endif
 
-extern float measured[1][SWEEP_POINTS_MAX][4];
+extern phase_t measured[1][SWEEP_POINTS_MAX][4];
 
 #define CAL_TYPE_COUNT  1
 #define CAL_LOAD        0
@@ -561,16 +562,16 @@ typedef int16_t  audio_sample_t;
 void dsp_process(audio_sample_t *src, size_t len);
 void reset_dsp_accumerator(void);
 void reset_averaging(void);
-int calculate_gamma(float *gamma, uint16_t tau);
-void calculate_subsamples(float *gamma, uint16_t tau);
+int calculate_gamma(phase_t *gamma, uint16_t tau);
+void calculate_subsamples(phase_t *gamma, uint16_t tau);
 float get_freq_a(void);
-void set_null_phase(float v);
+void set_null_phase(phase_t v);
 void calculate_vectors(void);
-void fetch_amplitude(float *gamma);
-void fetch_amplitude_ref(float *gamma);
+void fetch_amplitude(phase_t *gamma);
+void fetch_amplitude_ref(phase_t *gamma);
 void generate_DSP_Table(int offset);
 #ifdef DMTD
-void fetch_data(float *gamma);
+void fetch_data(phase_t *gamma);
 #endif
 
 /*
@@ -941,7 +942,7 @@ enum trace_type {
 #define ROUND_GRID_MASK 0
 
 // Trace info description structure
-typedef float (*get_value_cb_t)(int idx, const float *v); // get value callback
+typedef phase_t (*get_value_cb_t)(int idx, const phase_t *v); // get value callback
 typedef struct trace_info {
   const char *name;            // Trace name
   const char *format;          // trace value printf format for marker output
@@ -1148,7 +1149,7 @@ typedef struct properties {
   float    _s21_offset;
   float    _portz;
   float    pll;
-  float    _cal_data[CAL_TYPE_COUNT][SWEEP_POINTS_MAX][2]; // Put at the end for faster access to others data from struct
+  float    _cal_data[CAL_TYPE_COUNT][2][2]; // Put at the end for faster access to others data from struct
   uint32_t checksum;
 } properties_t;
 
@@ -1538,7 +1539,7 @@ extern uint8_t operation_requested;
 #define VNA_MODE_TOGGLE  2
 void apply_VNA_mode(uint16_t idx, uint16_t value);
 
-void disk_log(float p);
+void disk_log(phase_t p);
 /*
  * misclinous
  */

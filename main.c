@@ -124,10 +124,10 @@ volatile uint16_t p_sweep = 0;
 volatile int requested_points;
 uint16_t old_p_sweep;
 // Sweep measured data
-float measured[1][SWEEP_POINTS_MAX][4];
+phase_t measured[1][SWEEP_POINTS_MAX][4];
 #define TEMP_COUNT 64
 #define TEMP_MASK 0x3f
-float temp_measured[TEMP_COUNT][4];
+phase_t temp_measured[TEMP_COUNT][4];
 volatile int temp_input = 0;
 volatile int temp_output = 0;
 
@@ -135,9 +135,9 @@ volatile int temp_output = 0;
 float aver_freq_a;
 uint16_t aver_freq_count_a;
 float aver_freq_sum_a;
-float aver_phase_d;
+phase_t aver_phase_d;
 float aver_freq_d;
-float last_phase_d;
+phase_t last_phase_d;
 float last_freq_d;
 float level_a;
 float level_b;
@@ -468,7 +468,7 @@ transform_domain(uint16_t ch_mask)
     int ch = 0;
     // Prepare data in tmp buffer (use spi_buffer), apply window function and constant correction factor
     float* tmp  = (float*)spi_buffer;
-    float *data = measured[ch][0];
+    phase_t *data = measured[ch][0];
 #if 1
     for (i = 0; i < FFT_SIZE; i++) {
 #ifdef USE_FFT_WINDOW_BUFFER
@@ -1013,7 +1013,7 @@ VNA_SHELL_FUNCTION(cmd_data)
 {
   int i;
   int sel = 0;
-  float (*array)[4];
+  phase_t (*array)[4];
   if (argc == 1)
     sel = my_atoi(argv[0]);
   if (sel < 0 || sel >=7)
@@ -1462,12 +1462,13 @@ static void applyOffset(float data[2], float offset){
 #include "vna_modules/vna_renorm.c"
 #endif
 
+#if 1
 float prev_v;
 
 #define PHASE_BUCKETS  50
-float phase_correction[PHASE_BUCKETS];
+phase_t phase_correction[PHASE_BUCKETS];
 
-void add_correction(float phase, float value)
+void add_correction(phase_t phase, phase_t value)
 {
   int index = (phase+0.5) * PHASE_BUCKETS;
   if (index > PHASE_BUCKETS-1)
@@ -1486,7 +1487,7 @@ void clear_correction(void)
     phase_correction[i] = 0;
 }
 
-float get_correction(float phase)
+phase_t get_correction(phase_t phase)
 {
   int index = (phase+0.5) * PHASE_BUCKETS;
   if (index > PHASE_BUCKETS-1)
@@ -1495,11 +1496,11 @@ float get_correction(float phase)
     index = 0;
   return(phase_correction[index]);
 }
-
+#endif
 
 uint32_t reg_n;
 int32_t reg_xi;
-float reg_yi;
+phase_t reg_yi;
 int32_t reg_sum_xi;
 double reg_sum_yi;
 double reg_sum_xiyi;
@@ -1509,7 +1510,7 @@ volatile double res_freq, res_phase;
 //double freq;
 
 //int wrap;
-float reg_prev_phase, reg_start_phase;
+phase_t reg_prev_phase, reg_start_phase;
 
 void reset_regression(void) {
   reg_n = 0;
@@ -1518,8 +1519,8 @@ void reset_regression(void) {
   reg_sum_xiyi = reg_sum_xi2 = reg_sum_yi2 = 0;
 }
 
-void add_regression(float v) {
-  float delta_phase;
+void add_regression(phase_t v) {
+  phase_t delta_phase;
   reg_n++;
   if (reg_n != 1) {
     if (v> reg_prev_phase + 0.5) {          // Unwrap
@@ -1550,7 +1551,7 @@ void add_regression(float v) {
 
 }
 
-float finalize_regression(void) {
+phase_t finalize_regression(void) {
   volatile double freq = AUDIO_ADC_FREQ / (config.tau * (config._bandwidth+SAMPLE_OVERHEAD) * AUDIO_SAMPLES_COUNT );
   if(reg_n >=10) {
     reg_n--;
@@ -1655,7 +1656,7 @@ static bool sweep(bool break_on_operation, uint16_t mask)
 //      palClearPad(GPIOC, GPIOC_LED);
 //      int t = 0;
 //      uint8_t type = trace[t].type;
-      float *array = &temp_measured[temp_output++][0];     // p_sweep is always zero
+      phase_t *array = &temp_measured[temp_output++][0];     // p_sweep is always zero
  //     shell_printf("out %d\r\n", temp_output);
 
       temp_output &= TEMP_MASK;
@@ -1664,7 +1665,7 @@ static bool sweep(bool break_on_operation, uint16_t mask)
       if (calc){                                           // Run standard get value function from table
         //      float v = 0;
         //      for (int i =0; i<sweep_points; i++) {
-        float v = calc(0, array);                                          // Get value
+        phase_t v = calc(0, array);                                          // Get value
         v /= 360;
 
 #if 0
@@ -1890,9 +1891,9 @@ fetch_next:
 
   if (config.tau <= 10) {
     get_value_cb_t calc = trace_info_list[GET_DFREQ].get_value_cb; // dfreq port 1
-    float (*array)[4] = measured[0];
+    phase_t (*array)[4] = measured[0];
     //  const char *format = index_ref >= 0 ? trace_info_list[type].dformat : trace_info_list[type].format; // Format string
-    float v = 0;
+    phase_t v = 0;
     for (int i =0; i<sweep_points-1; i++) {
       v += calc(i, array[i]);                                          // Get value
     }
@@ -1906,10 +1907,10 @@ fetch_next:
   {
     reset_regression();
     get_value_cb_t calc = trace_info_list[GET_DPHASE].get_value_cb; // dfreq port 1
-    float (*array)[4] = measured[0];
+    phase_t (*array)[4] = measured[0];
     //  const char *format = index_ref >= 0 ? trace_info_list[type].dformat : trace_info_list[type].format; // Format string
     for (int i =0; i<p_sweep; i++) {
-      float v = calc(i, array[i])/360;                                          // Get value
+      phase_t v = calc(i, array[i])/360;                                          // Get value
       add_regression(v);
     }
     aver_freq_d = finalize_regression();
@@ -1922,7 +1923,7 @@ fetch_next:
 
 
   // -------------------- Auto set CW frequency ----------------------
-  float (*array)[4];
+  phase_t (*array)[4];
   get_value_cb_t calc;
 #if 0
   calc = trace_info_list[GET_AFREQ].get_value_cb; // dfreq port 1

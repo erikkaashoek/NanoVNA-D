@@ -175,7 +175,7 @@ static const int16_t sincos_tbl[48][2] = {
 // Define DSP accumulator value type
 //typedef float acc_t;
 typedef int64_t acc_t;
-typedef float measure_t;
+//typedef float measure_t;
 typedef int32_t sum_t;
 
 acc_t acc_samp_s;
@@ -239,7 +239,7 @@ dsp_process(audio_sample_t *capture, size_t length)
 #else
 // Define DSP accumulator value type
 typedef int64_t acc_t;
-typedef float measure_t;
+//typedef float measure_t;
 static acc_t acc_samp_s;
 static acc_t acc_samp_c;
 static acc_t acc_ref_s;
@@ -252,7 +252,7 @@ static acc_t acc_samp_c2;
 static acc_t acc_ref_s2;
 static acc_t acc_ref_c2;
 #endif
-static float null_phase = 0.5;
+static phase_t null_phase = 0.5;
 // Cortex M4 DSP instruction use
 #include "dsp.h"
 void
@@ -347,28 +347,23 @@ dsp_process(audio_sample_t *capture, size_t length)         // Accumulated (down
 
 typedef double calc_t;
 
-//volatile float prev_delta_angle = -5.0;
-//volatile float curr_gamma3 = -5.0;
-//volatile float prev_speed = -5.0;
-//volatile float accell = 0;
-//volatile float gamma_aver[4];
-volatile float summed_samp_angle;
-volatile float summed_ref_angle;
-volatile float summed_delta_angle;
+volatile double summed_samp_angle;
+volatile double summed_ref_angle;
+volatile double summed_delta_angle;
 #ifdef SIDE_CHANNEL
-volatile float sum_side_delta_angle;
-float prev_side_delta_angle;
+volatile double sum_side_delta_angle;
+phase_t prev_side_delta_angle;
 #endif
 volatile int gamma_count = 0;
 volatile int decimated_tau;
-volatile float pll_delta_phase;
+volatile phase_t pll_delta_phase;
 extern float amp_a;
 extern float amp_b;
-float prev_samp_angle, prev_ref_angle, prev_delta_angle, prev_pll_delta_angle;
+double prev_samp_angle, prev_ref_angle, prev_delta_angle, prev_pll_delta_angle;
 
-#define LOG_SIZE    100
-volatile float phase_log[LOG_SIZE];
-int log_index = 0;
+//#define LOG_SIZE    100
+//volatile float phase_log[LOG_SIZE];
+//int log_index = 0;
 
 //#define HALF_PHASE  1.0
 //#define FULL_PHASE  2.0
@@ -381,7 +376,7 @@ calculate_vectors(void)
 {
 
 #ifndef CALC_GAMMA_3
-  float samp_angle;
+  phase_t samp_angle;
   samp_angle = vna_atan2f(acc_samp_s,acc_samp_c) / VNA_PI;
   if ((samp_angle - prev_samp_angle) < -HALF_PHASE)
     samp_angle = samp_angle + FULL_PHASE;
@@ -396,7 +391,7 @@ calculate_vectors(void)
   if (log_index >= LOG_SIZE) log_index = 0;
 #endif
 
-  float ref_angle;
+  double ref_angle;
   ref_angle = vna_atan2f(acc_ref_s,acc_ref_c) / VNA_PI;
   if ((ref_angle - prev_ref_angle) < -HALF_PHASE)
     ref_angle = ref_angle + FULL_PHASE;
@@ -407,7 +402,7 @@ calculate_vectors(void)
   prev_ref_angle = ref_angle;
 
 #ifdef CALC_GAMMA_3
-  float delta_angle;
+  double delta_angle;
   delta_angle =  - vna_atan2f((acc_samp_c * (float)acc_ref_c + acc_samp_s * (float)acc_ref_s),
                          (acc_samp_s * (double)acc_ref_c - acc_samp_c * (double)acc_ref_s)) / VNA_PI;
   if ((delta_angle - prev_delta_angle) < -HALF_PHASE)
@@ -419,7 +414,7 @@ calculate_vectors(void)
   prev_delta_angle = delta_angle;
 #endif
 #ifdef SIDE_CHANNEL
-  float side_delta_angle;
+  double side_delta_angle;
   side_delta_angle =  - vna_atan2f((acc_samp_c2 * (float)acc_ref_c2 + acc_samp_s2 * (float)acc_ref_s2),
                          (acc_samp_s2 * (double)acc_ref_c2 - acc_samp_c2 * (double)acc_ref_s2)) / VNA_PI;
   while ((side_delta_angle - prev_side_delta_angle) < -HALF_PHASE)
@@ -440,12 +435,12 @@ calculate_vectors(void)
 
 
   // calculate pll delta phase
-  float pll_delta_angle;
+  phase_t pll_delta_angle;
   if (current_props._fft_mode == FFT_B )
     pll_delta_angle = vna_atan2f(acc_samp_s - acc_prev_s,acc_samp_c-acc_prev_c) / VNA_PI;
   else
     pll_delta_angle = vna_atan2f(acc_ref_s - acc_prev_s,acc_ref_c-acc_prev_c) / VNA_PI;
-  float pll_delta_angle_increment = pll_delta_angle - prev_pll_delta_angle;
+  phase_t pll_delta_angle_increment = pll_delta_angle - prev_pll_delta_angle;
   if ((pll_delta_angle_increment) < -HALF_PHASE)
     pll_delta_angle_increment = pll_delta_angle_increment + FULL_PHASE;
   if ((pll_delta_angle_increment) > HALF_PHASE)
@@ -478,10 +473,10 @@ inline float my_fabs(float x)
 }
 
 #ifdef SIDE_CHANNEL
-static float side_aver;
+static double side_aver;
 #endif
 int
-calculate_gamma(float gamma[4], uint16_t tau)
+calculate_gamma(phase_t gamma[4], uint16_t tau)
 {
   decimated_tau = tau / config.decimation;
 #ifndef CALC_GAMMA_3
@@ -506,7 +501,7 @@ calculate_gamma(float gamma[4], uint16_t tau)
 
 #ifdef SIDE_CHANNEL
   if (VNA_MODE(VNA_MODE_SIDE_CHANNEL)) {
-    float temp = sum_side_delta_angle/tau;
+    phase_t temp = sum_side_delta_angle/tau;
     WRAP_FULL_PHASE(temp);
 
 #define S_AVER 3
@@ -534,7 +529,7 @@ calculate_gamma(float gamma[4], uint16_t tau)
   return(tau);
 }
 
-void calculate_subsamples(float gamma[4], uint16_t tau)
+void calculate_subsamples(phase_t gamma[4], uint16_t tau)
 {
   int used_samples = (AUDIO_BUFFER_LEN/2) * tau / config.decimation;
   gamma[2] = (float)acc_samp_s/(float)used_samples;
@@ -542,14 +537,14 @@ void calculate_subsamples(float gamma[4], uint16_t tau)
 }
 
 void
-fetch_amplitude(float gamma[2])
+fetch_amplitude(phase_t gamma[2])
 {
   gamma[0] =  acc_samp_s * 1e-9;
   gamma[1] =  acc_samp_c * 1e-9;
 }
 
 void
-fetch_amplitude_ref(float gamma[2])
+fetch_amplitude_ref(phase_t gamma[2])
 {
   gamma[0] =  acc_ref_s * 1e-9;
   gamma[1] =  acc_ref_c * 1e-9;
@@ -557,7 +552,7 @@ fetch_amplitude_ref(float gamma[2])
 
 #ifdef DMTD
 void
-fetch_data(float gamma[4])
+fetch_data(phase_t gamma[4])
 {
   gamma[0] =  acc_ref_s;
   gamma[1] =  acc_ref_c;
@@ -602,7 +597,7 @@ reset_averaging(void)
 #endif
 }
 
-void set_null_phase(float v)
+void set_null_phase(phase_t v)
 {
   null_phase += v/180.0;
   reset_sweep();
