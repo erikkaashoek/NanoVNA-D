@@ -1324,22 +1324,13 @@ void i2s_lld_serve_rx_interrupt(uint32_t flags) {
     kk++;
   }
 #endif
-
-//  if (dirty_count) {
-//    dirty_count--;
-//    return;
-//  }
-  //if ((flags & (STM32_DMA_ISR_TCIF|STM32_DMA_ISR_HTIF)) == 0) return;
-  uint16_t wait = wait_count;
-//  palSetPad(GPIOA, GPIOA_PA4);
-  //    return;
-  if (wait == 0 || chVTGetSystemTimeX() < ready_time) {
+  if (wait_count == 0 || chVTGetSystemTimeX() < ready_time) {
     reset_dsp_accumerator();
-    wait = wait_count = config._bandwidth;
-  }
-  if (tau_current == 0) {
-    tau_current = config.tau;
-    reset_averaging();
+    wait_count = config._bandwidth;
+    if (tau_current == 0) {
+      tau_current = config.tau;
+      reset_averaging();
+    }
   }
   uint16_t count = AUDIO_BUFFER_LEN;
   audio_sample_t *p = (flags & STM32_DMA_ISR_TCIF) ? rx_buffer + AUDIO_BUFFER_LEN : rx_buffer; // Full or Half transfer complete
@@ -1353,8 +1344,6 @@ void i2s_lld_serve_rx_interrupt(uint32_t flags) {
   if (wait_count == 0) {
     if (!(props_mode & TD_SAMPLE) && !(props_mode & TD_PNA)) {
       calculate_vectors();      // Convert I/Q into angle and sum angles
- //     aver_freq_sum_a += get_freq_a();
- //     aver_freq_count_a++;
     }
     -- tau_current;
     if (tau_current == 0) {
@@ -1373,10 +1362,6 @@ void i2s_lld_serve_rx_interrupt(uint32_t flags) {
         aver_freq_a = get_freq_a();
         calculate_gamma(temp_measured[temp_input++], config.tau);              // Calculate average angles and store in temp_measured
         temp_input &= TEMP_MASK;
-//        aver_freq_a = aver_freq_sum_a / aver_freq_count_a;
-//        aver_freq_sum_a = 0;
-//        aver_freq_count_a = 0;
-        //      shell_printf("in  %d\r\n", temp_input);
         if (temp_input == temp_output) {
 #if 0
           temp_input--;

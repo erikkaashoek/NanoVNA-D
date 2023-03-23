@@ -377,13 +377,15 @@ calculate_vectors(void)
 #ifndef CALC_GAMMA_3
   phase_t samp_angle;
   samp_angle = vna_atan2f(acc_samp_s,acc_samp_c) / VNA_PI;
-  if ((samp_angle - prev_samp_angle) < -HALF_PHASE)
+
+  if ((samp_angle - prev_samp_angle) < -HALF_PHASE)     // Unwrap
     samp_angle = samp_angle + FULL_PHASE;
   if ((samp_angle - prev_samp_angle) > HALF_PHASE)
     samp_angle = samp_angle - FULL_PHASE;
+  prev_samp_angle = samp_angle;
+
   if (gamma_count  < decimated_tau)
     summed_samp_angle += samp_angle;
-  prev_samp_angle = samp_angle;
 
   if (gamma_count  < decimated_tau)
     phase_log[log_index++] = samp_angle;
@@ -392,37 +394,42 @@ calculate_vectors(void)
 
   double ref_angle;
   ref_angle = vna_atan2f(acc_ref_s,acc_ref_c) / VNA_PI;
-  if ((ref_angle - prev_ref_angle) < -HALF_PHASE)
+
+  if ((ref_angle - prev_ref_angle) < -HALF_PHASE)   // Unwrap
     ref_angle = ref_angle + FULL_PHASE;
   if ((ref_angle - prev_ref_angle) > HALF_PHASE)
     ref_angle = ref_angle - FULL_PHASE;
+  prev_ref_angle = ref_angle;
+
   if (gamma_count  < decimated_tau)
     summed_ref_angle += ref_angle;
-  prev_ref_angle = ref_angle;
 
 #ifdef CALC_GAMMA_3
   double delta_angle;
   delta_angle =  - vna_atan2f((acc_samp_c * (float)acc_ref_c + acc_samp_s * (float)acc_ref_s),
                          (acc_samp_s * (double)acc_ref_c - acc_samp_c * (double)acc_ref_s)) / VNA_PI;
-  if ((delta_angle - prev_delta_angle) < -HALF_PHASE)
+
+  if ((delta_angle - prev_delta_angle) < -HALF_PHASE)   // Unwrap
     delta_angle = delta_angle + FULL_PHASE;
   if ((delta_angle - prev_delta_angle) > HALF_PHASE)
     delta_angle = delta_angle - FULL_PHASE;
+  prev_delta_angle = delta_angle;
+
   if (gamma_count  < decimated_tau)
     summed_delta_angle += delta_angle;
-  prev_delta_angle = delta_angle;
 #endif
 #ifdef SIDE_CHANNEL
   double side_delta_angle;
   side_delta_angle =  - vna_atan2f((acc_samp_c2 * (float)acc_ref_c2 + acc_samp_s2 * (float)acc_ref_s2),
                          (acc_samp_s2 * (double)acc_ref_c2 - acc_samp_c2 * (double)acc_ref_s2)) / VNA_PI;
-  while ((side_delta_angle - prev_side_delta_angle) < -HALF_PHASE)
+
+  while ((side_delta_angle - prev_side_delta_angle) < -HALF_PHASE)  // Unwrap
     side_delta_angle = side_delta_angle + FULL_PHASE;
   while ((side_delta_angle - prev_side_delta_angle) > HALF_PHASE)
     side_delta_angle = side_delta_angle - FULL_PHASE;
-  summed_side_delta_angle += side_delta_angle;
   prev_side_delta_angle = side_delta_angle;
 
+  summed_side_delta_angle += side_delta_angle;
 #endif
 
   amp_a = vna_sqrtf((float)acc_ref_c * (float)acc_ref_c + (float)acc_ref_s*(float)acc_ref_s);
@@ -433,27 +440,7 @@ calculate_vectors(void)
 #endif
 
 
-  // calculate ref delta phase
-  phase_t pll_delta_angle;
-
-  pll_delta_angle = vna_atan2f(acc_ref_s - acc_prev_s,acc_ref_c-acc_prev_c) / VNA_PI;
-  phase_t pll_delta_angle_increment = pll_delta_angle - prev_pll_delta_angle;
-  if ((pll_delta_angle_increment) < -HALF_PHASE)
-    pll_delta_angle_increment = pll_delta_angle_increment + FULL_PHASE;
-  if ((pll_delta_angle_increment) > HALF_PHASE)
-    pll_delta_angle_increment = pll_delta_angle_increment - FULL_PHASE;
-  pll_delta_phase = pll_delta_angle_increment;
-  summed_pll_delta_angle += pll_delta_angle_increment;         // no decimation on PLL
-  prev_pll_delta_angle = pll_delta_angle;
-  if (current_props._fft_mode == FFT_B ) {
-    acc_prev_s = acc_samp_s;
-    acc_prev_c = acc_samp_c;
-  } else {
-    acc_prev_s = acc_ref_s;
-    acc_prev_c = acc_ref_c;
-  }
-
-  // calculate pll delta phase
+   // calculate pll delta phase
   phase_t pll_delta_angle;
   if (current_props._fft_mode == FFT_B )
     pll_delta_angle = vna_atan2f(acc_samp_s - acc_prev_s,acc_samp_c-acc_prev_c) / VNA_PI;
@@ -511,8 +498,8 @@ calculate_gamma(phase_t gamma[4], uint16_t tau)
   gamma[2] = summed_ref_angle/decimated_tau;
   WRAP_FULL_PHASE(gamma[2]);
 
-  df *= AUDIO_ADC_FREQ>>1;
-  df /= config.tau*(config._bandwidth+SAMPLE_OVERHEAD) * AUDIO_SAMPLES_COUNT;
+//  df *= AUDIO_ADC_FREQ>>1;
+//  df /= config.tau*(config._bandwidth+SAMPLE_OVERHEAD) * AUDIO_SAMPLES_COUNT;
 
 
 #ifdef CALC_GAMMA_3
