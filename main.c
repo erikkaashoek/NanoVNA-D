@@ -1353,8 +1353,8 @@ void i2s_lld_serve_rx_interrupt(uint32_t flags) {
   if (wait_count == 0) {
     if (!(props_mode & TD_SAMPLE) && !(props_mode & TD_PNA)) {
       calculate_vectors();      // Convert I/Q into angle and sum angles
-      aver_freq_sum_a += get_freq_a();
-      aver_freq_count_a++;
+ //     aver_freq_sum_a += get_freq_a();
+ //     aver_freq_count_a++;
     }
     -- tau_current;
     if (tau_current == 0) {
@@ -1370,11 +1370,12 @@ void i2s_lld_serve_rx_interrupt(uint32_t flags) {
         dsp_ready = true;
 
       } else {
+        aver_freq_a = get_freq_a();
         calculate_gamma(temp_measured[temp_input++], config.tau);              // Calculate average angles and store in temp_measured
         temp_input &= TEMP_MASK;
-        aver_freq_a = aver_freq_sum_a / aver_freq_count_a;
-        aver_freq_sum_a = 0;
-        aver_freq_count_a = 0;
+//        aver_freq_a = aver_freq_sum_a / aver_freq_count_a;
+//        aver_freq_sum_a = 0;
+//        aver_freq_count_a = 0;
         //      shell_printf("in  %d\r\n", temp_input);
         if (temp_input == temp_output) {
 #if 0
@@ -4155,8 +4156,7 @@ THD_FUNCTION(myshellThread, p)
 // Profile stack usage (enable threads command by def ENABLE_THREADS_COMMAND) show:
 // Stack maximum usage = 472 bytes (need test more and run all commands), free stack = 40 bytes
 //
-int main(void)
-{
+int main(void){
 /*
  * Initialize ChibiOS systems
  */

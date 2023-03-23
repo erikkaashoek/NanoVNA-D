@@ -557,6 +557,14 @@ typedef int16_t  audio_sample_t;
 #define A_PHASE     2
 #define DELTA_PHASE 3
 
+
+typedef struct {
+  phase_t delta_phase;
+  phase_t freq_a;
+  phase_t freq_b;
+  phase_t side_delta_phase;
+} result_t;
+
 #define WRAP_FULL_PHASE(X)   if ((X) > HALF_PHASE) (X) -= FULL_PHASE; if ((X) < -HALF_PHASE) (X) += FULL_PHASE;
 
 void dsp_process(audio_sample_t *src, size_t len);

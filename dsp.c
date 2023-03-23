@@ -345,13 +345,12 @@ dsp_process(audio_sample_t *capture, size_t length)         // Accumulated (down
 }
 #endif
 
-typedef double calc_t;
-
-volatile double summed_samp_angle;
-volatile double summed_ref_angle;
-volatile double summed_delta_angle;
+volatile phase_t summed_samp_angle;
+volatile phase_t summed_ref_angle;
+volatile phase_t summed_delta_angle;
+volatile phase_t summed_pll_delta_angle;
 #ifdef SIDE_CHANNEL
-volatile double sum_side_delta_angle;
+volatile phase_t summed_side_delta_angle;
 phase_t prev_side_delta_angle;
 #endif
 volatile int gamma_count = 0;
@@ -421,7 +420,7 @@ calculate_vectors(void)
     side_delta_angle = side_delta_angle + FULL_PHASE;
   while ((side_delta_angle - prev_side_delta_angle) > HALF_PHASE)
     side_delta_angle = side_delta_angle - FULL_PHASE;
-  sum_side_delta_angle += side_delta_angle;
+  summed_side_delta_angle += side_delta_angle;
   prev_side_delta_angle = side_delta_angle;
 
 #endif
@@ -433,6 +432,26 @@ calculate_vectors(void)
   amp_sb = vna_sqrtf((float)acc_samp_c2 * (float)acc_samp_c2 + (float)acc_samp_s2*(float)acc_samp_s2);
 #endif
 
+
+  // calculate ref delta phase
+  phase_t pll_delta_angle;
+
+  pll_delta_angle = vna_atan2f(acc_ref_s - acc_prev_s,acc_ref_c-acc_prev_c) / VNA_PI;
+  phase_t pll_delta_angle_increment = pll_delta_angle - prev_pll_delta_angle;
+  if ((pll_delta_angle_increment) < -HALF_PHASE)
+    pll_delta_angle_increment = pll_delta_angle_increment + FULL_PHASE;
+  if ((pll_delta_angle_increment) > HALF_PHASE)
+    pll_delta_angle_increment = pll_delta_angle_increment - FULL_PHASE;
+  pll_delta_phase = pll_delta_angle_increment;
+  summed_pll_delta_angle += pll_delta_angle_increment;         // no decimation on PLL
+  prev_pll_delta_angle = pll_delta_angle;
+  if (current_props._fft_mode == FFT_B ) {
+    acc_prev_s = acc_samp_s;
+    acc_prev_c = acc_samp_c;
+  } else {
+    acc_prev_s = acc_ref_s;
+    acc_prev_c = acc_ref_c;
+  }
 
   // calculate pll delta phase
   phase_t pll_delta_angle;
@@ -446,6 +465,7 @@ calculate_vectors(void)
   if ((pll_delta_angle_increment) > HALF_PHASE)
     pll_delta_angle_increment = pll_delta_angle_increment - FULL_PHASE;
   pll_delta_phase = pll_delta_angle_increment;
+  summed_pll_delta_angle += pll_delta_angle_increment;         // no decimation on PLL
   prev_pll_delta_angle = pll_delta_angle;
   if (current_props._fft_mode == FFT_B ) {
     acc_prev_s = acc_samp_s;
@@ -454,13 +474,14 @@ calculate_vectors(void)
     acc_prev_s = acc_ref_s;
     acc_prev_c = acc_ref_c;
   }
-  gamma_count++;
+gamma_count++;
 
 }
 
 float get_freq_a(void)
 {
-  float df = pll_delta_phase * (AUDIO_ADC_FREQ>>1);
+  float df = (summed_pll_delta_angle / gamma_count) // pll_delta_phase
+      * (AUDIO_ADC_FREQ>>1);
   df /= (config._bandwidth+SAMPLE_OVERHEAD) * AUDIO_SAMPLES_COUNT;
   return (df);
 }
@@ -490,6 +511,10 @@ calculate_gamma(phase_t gamma[4], uint16_t tau)
   gamma[2] = summed_ref_angle/decimated_tau;
   WRAP_FULL_PHASE(gamma[2]);
 
+  df *= AUDIO_ADC_FREQ>>1;
+  df /= config.tau*(config._bandwidth+SAMPLE_OVERHEAD) * AUDIO_SAMPLES_COUNT;
+
+
 #ifdef CALC_GAMMA_3
   gamma[3] = summed_delta_angle/decimated_tau + null_phase;
   if (VNA_MODE(VNA_MODE_SIDE_CHANNEL) && level_sa > -30)
@@ -501,7 +526,7 @@ calculate_gamma(phase_t gamma[4], uint16_t tau)
 
 #ifdef SIDE_CHANNEL
   if (VNA_MODE(VNA_MODE_SIDE_CHANNEL)) {
-    phase_t temp = sum_side_delta_angle/tau;
+    phase_t temp = summed_side_delta_angle/tau;
     WRAP_FULL_PHASE(temp);
 
 #define S_AVER 3
@@ -536,6 +561,7 @@ void calculate_subsamples(phase_t gamma[4], uint16_t tau)
   gamma[3] = (float)acc_ref_s/(float)used_samples;
 }
 
+#if 0
 void
 fetch_amplitude(phase_t gamma[2])
 {
@@ -549,8 +575,9 @@ fetch_amplitude_ref(phase_t gamma[2])
   gamma[0] =  acc_ref_s * 1e-9;
   gamma[1] =  acc_ref_c * 1e-9;
 }
+#endif
 
-#ifdef DMTD
+#if 0
 void
 fetch_data(phase_t gamma[4])
 {
@@ -586,13 +613,14 @@ reset_averaging(void)
   summed_samp_angle = 0.0;
   summed_ref_angle = 0.0;
   summed_delta_angle = 0.0;
+  summed_pll_delta_angle = 0.0;
   gamma_count = 0;
   prev_samp_angle = 0;
   prev_ref_angle = 0;
   prev_delta_angle = 0;
 //  prev_pll_delta_angle = 0;
 #ifdef SIDE_CHANNEL
-  sum_side_delta_angle = 0.0;
+  summed_side_delta_angle = 0.0;
   prev_side_delta_angle = 0.0;
 #endif
 }
