@@ -1362,7 +1362,7 @@ void i2s_lld_serve_rx_interrupt(uint32_t flags) {
 
       } else {
         aver_freq_a = get_freq_a();
-        aver_freq_b = get_freq_a();
+        aver_freq_b = get_freq_b();
         aver_freq_delta = get_freq_delta();
         calculate_gamma(temp_measured[temp_input++], config.tau);              // Calculate average angles and store in temp_measured
         temp_input &= TEMP_MASK;
