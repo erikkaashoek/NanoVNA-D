@@ -61,7 +61,7 @@ static char *shell_args[VNA_SHELL_MAX_ARGUMENTS + 1];
 static uint16_t shell_nargs;
 static volatile vna_shellcmd_t  shell_function = 0;
 
-#define ENABLED_DUMP_COMMAND
+//#define ENABLED_DUMP_COMMAND
 // Allow get threads debug info
 #define ENABLE_THREADS_COMMAND
 // Enable vbat_offset command, allow change battery voltage correction in config
@@ -133,6 +133,8 @@ volatile int temp_output = 0;
 
 //uint16_t sample_count;
 float aver_freq_a;
+float aver_freq_b;
+float aver_freq_delta;
 uint16_t aver_freq_count_a;
 float aver_freq_sum_a;
 phase_t aver_phase_d;
@@ -1360,6 +1362,8 @@ void i2s_lld_serve_rx_interrupt(uint32_t flags) {
 
       } else {
         aver_freq_a = get_freq_a();
+        aver_freq_b = get_freq_a();
+        aver_freq_delta = get_freq_delta();
         calculate_gamma(temp_measured[temp_input++], config.tau);              // Calculate average angles and store in temp_measured
         temp_input &= TEMP_MASK;
         if (temp_input == temp_output) {
@@ -1386,7 +1390,7 @@ extern uint16_t timings[16];
 #define DELAY_SWEEP_START     timings[4]
 #endif
 
-#define DSP_START(delay) {ready_time = chVTGetSystemTimeX() + delay; wait_count = config._bandwidth+2;}
+//#define DSP_START(delay) {ready_time = chVTGetSystemTimeX() + delay; wait_count = config._bandwidth+2;}
 //#define DSP_PREWAIT         while (wait_count == 0 && !(operation_requested && break_on_operation)) {__WFI();}
 //#define DSP_WAIT         while (wait_count && !(operation_requested && break_on_operation)) {__WFI();}
 #define DSP_PREWAIT      dsp_ready = false

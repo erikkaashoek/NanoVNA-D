@@ -2181,7 +2181,7 @@ draw_measurements(void)
     f = (((double)aver_freq_a) + (double)get_sweep_frequency(ST_CW)) / 1000000000;
     sign = false;
     dash_p = true;
-#if 0
+#if 1
   } else if ((level_a < MIN_LEVEL  && current_props._fft_mode == FFT_OFF) || current_props._fft_mode == FFT_B) {
       lcd_printf(x,y+10, "   B Freq:  ");
       f = (((double)aver_freq_b) + (double)get_sweep_frequency(ST_CW)) / 1000000000;
@@ -2190,7 +2190,7 @@ draw_measurements(void)
 #endif
   } else {
     lcd_printf(x,y+10, "B-A Freq:  ");
-    f = (VNA_MODE(VNA_MODE_TRACE_AVER) ? aver_freq_d : last_freq_d) / 100;
+    f = (VNA_MODE(VNA_MODE_TRACE_AVER) ? aver_freq_d : aver_freq_delta) / 100;
     if (level_a < MIN_LEVEL || level_b < MIN_LEVEL  || current_props._fft_mode != FFT_OFF) dash = true;
   }
   x = 100;

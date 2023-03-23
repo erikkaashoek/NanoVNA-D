@@ -273,6 +273,8 @@
 typedef float phase_t;
 
 extern float aver_freq_a;
+extern float aver_freq_b;
+extern float aver_freq_delta;
 extern phase_t aver_phase_d;
 extern float aver_freq_d;
 extern phase_t last_phase_d;
@@ -556,6 +558,9 @@ typedef int16_t  audio_sample_t;
 #define B_PHASE     1
 #define A_PHASE     2
 #define DELTA_PHASE 3
+#define B_FREQ      4
+#define A_FREQ      5
+#define DELTA_FREQ  6
 
 
 typedef struct {
@@ -566,6 +571,8 @@ typedef struct {
 } result_t;
 
 #define WRAP_FULL_PHASE(X)   if ((X) > HALF_PHASE) (X) -= FULL_PHASE; if ((X) < -HALF_PHASE) (X) += FULL_PHASE;
+#define UNWRAP_PHASE(X,LAST_X) if ((X - LAST_X) < -HALF_PHASE) X += FULL_PHASE; if ((X - LAST_X) > HALF_PHASE) X -= FULL_PHASE; LAST_X = X;
+
 
 void dsp_process(audio_sample_t *src, size_t len);
 void reset_dsp_accumerator(void);
@@ -573,6 +580,8 @@ void reset_averaging(void);
 int calculate_gamma(phase_t *gamma, uint16_t tau);
 void calculate_subsamples(phase_t *gamma, uint16_t tau);
 float get_freq_a(void);
+float get_freq_b(void);
+float get_freq_delta(void);
 void set_null_phase(phase_t v);
 void calculate_vectors(void);
 void fetch_amplitude(phase_t *gamma);
