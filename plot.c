@@ -373,21 +373,23 @@ static phase_t sample_b(int i, const phase_t *v) {
 //**************************************************************************************
 static phase_t phase_a(int i, const phase_t *v) {
   (void) i;
-  return(v[2]*180.0f);
+  return(v[A_PHASE]*180.0f);
 }
 
 static phase_t phase_b(int i, const phase_t *v) {
   (void) i;
-  return(v[1]*180.0f);
+  return(v[B_PHASE]*180.0f);
 }
 
 static phase_t get_phase(phase_t v)
 {
   phase_t p = v;
+#if 0
   while (p > 1.0)
     p -= 2.0;
   while (p<-1.0)
     p += 2.0;
+#endif
   p /= 2.0;
   if (VNA_MODE(VNA_MODE_PULLING)) {
     p -= sinf( p*2.0*VNA_PI + config.pull[PULL_OFFSET]) * config.pull[PULL_FUNDAMENTAL];
@@ -398,11 +400,13 @@ static phase_t get_phase(phase_t v)
 
 static phase_t phase_d(int i, const phase_t *v) {
   (void) i;
-  phase_t p = v[3];
+  phase_t p = v[D_PHASE];
+#if 0
   while (p >= 1)
     p -= 2.0;
   while (p<-1)
     p += 2.0;
+#endif
   p /= 2.0;
   if (VNA_MODE(VNA_MODE_PULLING)) {
     p -= sinf( p*2.0*VNA_PI + config.pull[PULL_OFFSET]) * config.pull[PULL_FUNDAMENTAL];
@@ -414,11 +418,13 @@ static phase_t phase_d(int i, const phase_t *v) {
 #ifdef SIDE_CHANNEL
 static phase_t phase_s(int i, const phase_t *v) {
   (void) i;
-  phase_t p = v[0];
+  phase_t p = v[S_PHASE];
+#if 0
   while (p >= 1)
     p -= 2.0;
   while (p<-1)
     p += 2.0;
+#endif
   p /= 2.0;
   return(p*360.0f);
 }
@@ -429,7 +435,7 @@ static phase_t r_start;
 
 static phase_t correction(int i, const phase_t *v) {
   (void) i;
-  phase_t p = get_phase(v[3]);
+  phase_t p = get_phase(v[D_PHASE]);
   phase_t c = sinf( p*2.0*VNA_PI + config.pull[PULL_OFFSET]) * config.pull[PULL_FUNDAMENTAL];
   c += sinf( (2*p)*2.0*VNA_PI + config.pull[PULL_SECOND_SHIFT]) * config.pull[PULL_SECOND];
   return(c);
@@ -437,13 +443,13 @@ static phase_t correction(int i, const phase_t *v) {
 
 static phase_t residue(int i, const phase_t *v) {
   (void) i;
-  phase_t p = get_phase(v[3]);
+  phase_t p = get_phase(v[D_PHASE]);
   if (i == 0) {
     wraps = 0;
     r_start = p;
     return(0.0);
   }
-  phase_t pp = get_phase(v[-1]);
+  phase_t pp = get_phase(v[D_PHASE - MAX_MEASURED]);
   if (p > pp + 0.5) {
     wraps--;
   }
@@ -460,7 +466,7 @@ static phase_t transform_d(int i, const phase_t *v) {
     t = -t;
   if (t == 0)
     return -140;
-  return (2*vna_log10f_x_10(t) + 16);
+  return (2*vna_log10f_x_10(t));
 }
 
 static phase_t transform_a(int i, const phase_t *v) {
@@ -470,7 +476,7 @@ static phase_t transform_a(int i, const phase_t *v) {
     t = -t;
   if (t == 0)
     return -140;
-  return (2*vna_log10f_x_10(t) - (VNA_MODE(VNA_MODE_WIDE) ? 157 : 200));
+  return (2*vna_log10f_x_10(t) - (VNA_MODE(VNA_MODE_WIDE) ? 157 : 190));
 }
 
 
@@ -479,332 +485,18 @@ static phase_t transform_a(int i, const phase_t *v) {
 //**************************************************************************************
 static phase_t freq_a(int i, const phase_t *v) {
   (void) i;
-  if (i == p_sweep-1){
-    i = p_sweep-2;
-    v--;
-    v--;
-    v--;
-    v--;
-  }
-  phase_t df = v[6] - v[2];
-  if (df >= 1.0)
-    df -= 2.0;
-  if (df <= -1.0)
-    df += 2.0;
-
-  df *= AUDIO_ADC_FREQ>>1;
-  df /= config.tau*(config._bandwidth+SAMPLE_OVERHEAD) * AUDIO_SAMPLES_COUNT;
-  return (df);
+  return(v[A_FREQ]);
 }
 
 static phase_t freq_b(int i, const phase_t *v) {
   (void) i;
-  if (i == p_sweep-1){
-    i = p_sweep-2;
-    v--;
-    v--;
-    v--;
-    v--;
-  }
-  phase_t df = v[5] - v[1];
-  if (df >= 1.0)
-    df -= 2.0;
-  if (df <= -1.0)
-    df += 2.0;
-
-  df *= AUDIO_ADC_FREQ>>1;
-  df /= config.tau*(config._bandwidth+SAMPLE_OVERHEAD) * AUDIO_SAMPLES_COUNT;
-  return (df);
+  return(v[B_FREQ]);
 }
 
 static phase_t freq_d(int i, const phase_t *v) {
   (void) i;
-  if (i == p_sweep-1){
-    i = p_sweep-2;
-    v--;
-    v--;
-    v--;
-    v--;
-  }
-#if 0
-  phase_t df_a = (v[6] - v[2])*0.5f;
-  if (df_a > 0.5)
-    df_a -= 1.0;
-  if (df_a < -0.5)
-    df_a += 1.0;
-
-  phase_t df_b = (v[7] - v[3])*0.5f;
-  if (df_b > 0.5)
-    df_b -= 1.0;
-  if (df_b < -0.5)
-    df_b += 1.0;
-#if 0
-  df_a *= AUDIO_ADC_FREQ;
-  df_a /= (config._bandwidth+2) * AUDIO_SAMPLES_COUNT;
-
-  df_b *= AUDIO_ADC_FREQ;
-  df_b /= (config._bandwidth+2) * AUDIO_SAMPLES_COUNT;
-
-
-  phase_t ratio = df_a - df_b;
-  return (ratio);
-#else
-  phase_t df = df_a - df_b;
-
-  df *= AUDIO_ADC_FREQ;
-  df /= (config._bandwidth+2) * AUDIO_SAMPLES_COUNT;
-  return (df);
-#endif
-#else
-  phase_t df = v[7] - v[3];
-  if (df >= 1.0)
-    df -= 2.0;
-  if (df < -1.0)
-    df += 2.0;
-
-  df *= AUDIO_ADC_FREQ>>1;   // This is the 0.5 multiplication factor
-  df /= config.tau*(config._bandwidth+SAMPLE_OVERHEAD) * AUDIO_SAMPLES_COUNT;
-  return (df);
-
-#endif
+  return(v[D_FREQ]);
 }
-
-#if 0
-//**************************************************************************************
-// Group delay
-//**************************************************************************************
-static float groupdelay(const float *v, const float *w, uint32_t deltaf) {
-#if 1
-  // atan(w)-atan(v) = atan((w-v)/(1+wv)), for complex v and w result q = v / w
-  float r = w[0]*v[0] + w[1]*v[1];
-  float i = w[0]*v[1] - w[1]*v[0];
-  return vna_atan2f(i, r) / (2 * VNA_PI * deltaf);
-#else
-  return (vna_atan2f(w[0], w[1]) - vna_atan2f(v[0], v[1])) / (2 * VNA_PI * deltaf);
-#endif
-}
-
-//**************************************************************************************
-// REAL
-//**************************************************************************************
-static float real(int i, const float *v) {
-  (void) i;
-  return v[0];
-}
-
-//**************************************************************************************
-// IMAG
-//**************************************************************************************
-static float imag(int i, const float *v) {
-  (void) i;
-  return v[1];
-}
-
-//**************************************************************************************
-// SWR = (1 + |S|)/(1 - |S|)
-//**************************************************************************************
-static float swr(int i, const float *v) {
-  (void) i;
-  float x = linear(i, v);
-  if (x > 0.99f)
-    return INFINITY;
-  return (1 + x)/(1 - x);
-}
-
-//**************************************************************************************
-// Z parameters calculations from complex S
-// Z = z0 * (1 + S) / (1 - S) = R + jX
-// |Z| = sqrtf(R*R+X*X)
-// Resolve this in complex give:
-//   let S` = 1 - S  => re` = 1 - re and im` = -im
-//       l` = re` * re` + im` * im`
-// Z = z0 * (2 - S`) / S` = z0 * 2 / S` - z0
-//  R = z0 * 2 * re` / l` - z0
-//  X =-z0 * 2 * im` / l`
-// |Z| = z0 * sqrt(4 * re / l` + 1)
-// Z phase = atan(X, R)
-//**************************************************************************************
-static float resistance(int i, const float *v) {
-  (void) i;
-  return get_s11_r(1.0f - v[0], -v[1], PORT_Z);
-}
-
-static float reactance(int i, const float *v) {
-  (void) i;
-  return get_s11_x(1.0f - v[0], -v[1], PORT_Z);
-}
-
-static float mod_z(int i, const float *v) {
-  (void) i;
-  const float z0 = PORT_Z;
-  const float l = get_l(1.0f - v[0], v[1]);
-  return z0 * vna_sqrtf(4.0f * v[0] / l + 1.0f); // always >= 0
-}
-
-static float phase_z(int i, const float *v) {
-  (void) i;
-  const float r = 1.0f - get_l(v[0], v[1]);
-  const float x = 2.0f * v[1];
-  return (180.0f / VNA_PI) * vna_atan2f(x, r);
-}
-
-//**************************************************************************************
-// Use w = 2 * pi * frequency
-// Get Series L and C from X
-//  C = -1 / (w * X)
-//  L =  X / w
-//**************************************************************************************
-static float series_c(int i, const float *v) {
-  const float zi = reactance(i, v);
-  const float w = get_w(i);
-  return -1.0f / (w * zi);
-}
-
-static float series_l(int i, const float *v) {
-  const float zi = reactance(i, v);
-  const float w = get_w(i);
-  return zi / w;
-}
-
-//**************************************************************************************
-// Q factor = abs(X / R)
-// Q = 2 * im / (1 - re * re - im * im)
-//**************************************************************************************
-static float qualityfactor(int i, const float *v) {
-  (void) i;
-  const float r = 1.0f - get_l(v[0], v[1]);
-  const float x = 2.0f * v[1];
-  return vna_fabsf(x / r);
-}
-
-//**************************************************************************************
-// Y parameters (conductance and susceptance) calculations from complex S
-// Y = (1 / z0) * (1 - S) / (1 + S) = G + jB
-// Resolve this in complex give:
-//   let S` = 1 + S  => re` = 1 + re and im` = im
-//       l` = re` * re` + im` * im`
-//      z0` = (1 / z0)
-// Y = z0` * (2 - S`) / S` = 2 * z0` / S` - z0`
-//  G =  2 * z0` * re` / l` - z0`
-//  B = -2 * z0` * im` / l`
-// |Y| = 1 / |Z|
-//**************************************************************************************
-static float conductance(int i, const float *v) {
-  (void) i;
-  return get_s11_r(1.0f + v[0], v[1], 1.0f / PORT_Z);
-}
-
-static float susceptance(int i, const float *v) {
-  (void) i;
-  return get_s11_x(1.0f + v[0], v[1], 1.0f / PORT_Z);
-}
-
-//**************************************************************************************
-// Parallel R and X calculations from Y
-// Rp = 1 / G
-// Xp =-1 / B
-//**************************************************************************************
-static float parallel_r(int i, const float *v) {
-#if 1
-  return 1.0f / conductance(i, v);
-#else
-  (void) i;
-  const float re = 1.0f + v[0], im = v[1];
-  const float z0 = PORT_Z;
-  const float l = get_l(re, im);
-  return z0 * l / (2.0f * re - l);
-#endif
-}
-
-static float parallel_x(int i, const float *v) {
-#if 1
-  return -1.0f / susceptance(i, v);
-#else
-  (void) i;
-  const float z0 = PORT_Z;
-  return z0 * get_l(1.0f + v[0], v[1]) / (2.0f * v[1]);
-#endif
-}
-
-
-//**************************************************************************************
-// Use w = 2 * pi * frequency
-// Get Parallel L and C from B
-//  C =  B / w
-//  L = -1 / (w * B) = Xp / w
-//**************************************************************************************
-static float parallel_c(int i, const float *v) {
-  const float yi = susceptance(i, v);
-  const float w = get_w(i);
-  return yi / w;
-}
-
-static float parallel_l(int i, const float *v) {
-  const float xp = parallel_x(i, v);
-  const float w = get_w(i);
-  return xp / w;
-}
-
-static float mod_y(int i, const float *v) {
-  return 1.0f / mod_z(i, v); // always >= 0
-}
-
-//**************************************************************************************
-// S21 series and shunt
-// S21 shunt  Z = 0.5f * z0 * S / (1 - S)
-//   replace S` = (1 - S)
-// S21 shunt  Z = 0.5f * z0 * (1 - S`) / S`
-// S21 series Z = 2.0f * z0 * (1 - S ) / S
-// Q21 = im / re
-//**************************************************************************************
-static float s21shunt_r(int i, const float *v) {
-  (void) i;
-  return get_s21_r(1.0f - v[0], -v[1], 0.5f * PORT_Z);
-}
-
-static float s21shunt_x(int i, const float *v) {
-  (void) i;
-  return get_s21_x(1.0f - v[0], -v[1], 0.5f * PORT_Z);
-}
-
-static float s21shunt_z(int i, const float *v) {
-  (void) i;
-  float l1 = get_l(v[0], v[1]);
-  float l2 = get_l(1.0f - v[0], v[1]);
-  return 0.5f * PORT_Z * vna_sqrtf(l1 / l2);
-}
-
-static float s21series_r(int i, const float *v) {
-  (void) i;
-  return get_s21_r(v[0], v[1], 2.0f * PORT_Z);
-}
-
-static float s21series_x(int i, const float *v) {
-  (void) i;
-  return get_s21_x(v[0], v[1], 2.0f * PORT_Z);
-}
-
-static float s21series_z(int i, const float *v) {
-  (void) i;
-  float l1 = get_l(v[0], v[1]);
-  float l2 = get_l(1.0f - v[0], v[1]);
-  return 2.0f * PORT_Z * vna_sqrtf(l2 / l1);
-}
-
-static float s21_qualityfactor(int i, const float *v) {
-  (void) i;
-  return vna_fabsf(v[1] / (v[0] - get_l(v[0], v[1])));
-}
-//**************************************************************************************
-// Group delay
-//**************************************************************************************
-float groupdelay_from_array(int i, const float *v) {
-  int bottom = (i ==              0) ? 0 : -1; // get prev point
-  int top    = (i == p_sweep-1) ? 0 :  1; // get next point
-  freq_t deltaf = get_sweep_frequency(ST_SPAN) / ((p_sweep - 1) / (top - bottom));
-  return groupdelay(&v[2*bottom], &v[2*top], deltaf);
-}
-#endif
 
 static inline void
 cartesian_scale(const float *v, int16_t *xp, int16_t *yp, float scale) {
@@ -839,9 +531,9 @@ const trace_info_t trace_info_list[MAX_TRACE_TYPE] =
 [TRC_SALOGMAG] = {"SDB",        "%.2f%s", S_DELTA "%.2f%s", S_dB,     -50.0f,   10.0f,    logmag_sa   },
 [TRC_SBLOGMAG] = {"SDB",        "%.2f%s", S_DELTA "%.2f%s", S_dB,     -50.0f,   10.0f,    logmag_sb   },
 #endif
-[TRC_TRANSFORM]={"FFT_PHASE",   "%.1FdBc %dHz", "%.4F",     "",       -80,      20.0f,    transform_d },
-[TRC_FFT_AMP]  ={"FFT_AMP",     "%.1FdBc %dHz", "%.4F",     "",       -80,      20.0f,    transform_a },
-[TRC_FFT_B]    ={"FFT_B",       "%.1FdBc %dHz", "%.4F",     "",       -80,      20.0f,    transform_a },
+[TRC_TRANSFORM]={"FFT D PHASE", "%.1FdBc %.2FHz", "%.4F",     "",       -80,      20.0f,    transform_d },
+[TRC_FFT_AMP]  ={"FFT A PHASE", "%.1FdBc %.2FHz", "%.4F",     "",       -80,      20.0f,    transform_a },
+[TRC_FFT_B]    ={"FFT B PHASE", "%.1FdBc %.2FHz", "%.4F",     "",       -80,      20.0f,    transform_a },
 };
 
 
@@ -925,7 +617,7 @@ trace_into_index(int t) {
     for (i = start; i <= stop; i++, x+= dx) {
       float v = 0;
 //      if (c) v = c(i, &array[4*i]);         // Get value
-      if (c) v = c(i, measured[trace[t].channel][i]);         // Get value
+      if (c) v = c(i, measured[i]);         // Get value
       if (stop<10 || i > 5) {
         if (min > v) min = v;
         if (max < v) max = v;
@@ -1004,7 +696,7 @@ trace_print_value_string(int xpos, int ypos, int t, int index, int index_ref)
   // Check correct input
   uint8_t type = trace[t].type;
   if (type >= MAX_TRACE_TYPE) return;
-  phase_t (*array)[4] = measured[0]; // trace[t].channel;
+  phase_t (*array)[MAX_MEASURED] = measured; // trace[t].channel;
 //  float *coeff = array[index];
   const char *format = index_ref >= 0 ? trace_info_list[type].dformat : trace_info_list[type].format; // Format string
   get_value_cb_t c = trace_info_list[type].get_value_cb;
@@ -1022,11 +714,12 @@ trace_print_value_string(int xpos, int ypos, int t, int index, int index_ref)
 //    shell_printf("%f\r\n",v);
 //    if (index_ref >= 0 && v != INFINITY) v-=c(index, array[index_ref]); // Calculate delta value
     int fft_freq_div = ((VNA_MODE(VNA_MODE_WIDE))?1:2);
-    if (type == TRC_FFT_AMP || type == TRC_FFT_B) {
+    if (type == TRC_FFT_AMP || type == TRC_FFT_B || type == TRC_TRANSFORM) {
       int mul = (VNA_MODE(VNA_MODE_WIDE) ? AUDIO_SAMPLES_COUNT : 1);
-      cell_printf(xpos, ypos, format, v, (int)((index - sweep_points/2)* mul * fft_freq_div /get_tau() / FFT_SIZE) );
-    } else if (type == TRC_TRANSFORM)
-      cell_printf(xpos, ypos, format, v, (int)(index * 1.0/get_tau() / FFT_SIZE));
+      cell_printf(xpos, ypos, format, v, ((index - sweep_points/2)* mul * fft_freq_div /get_tau() / FFT_SIZE) );
+    }
+//      else if (type == TRC_TRANSFORM)
+//      cell_printf(xpos, ypos, format, v, (int)(index * 1.0/get_tau() / FFT_SIZE));
     else
       cell_printf(xpos, ypos, format, v, trace_info_list[type].symbol);
   }
@@ -2235,7 +1928,7 @@ draw_frequencies(void)
     }
   } else {
     int fft_freq_div = ((VNA_MODE(VNA_MODE_WIDE))?2:1);
-    if (trace[0].type == TRC_FFT_AMP || trace[0].type == TRC_FFT_B) {
+    if (trace[0].type == TRC_FFT_AMP || trace[0].type == TRC_FFT_B || trace[0].type ==  TRC_TRANSFORM) {
       int mul = (VNA_MODE(VNA_MODE_WIDE) ? AUDIO_SAMPLES_COUNT : 1);
       lcd_printf(FREQUENCIES_XPOS1, FREQUENCIES_YPOS, "-%d Hz", (int)((sweep_points-1)*mul/get_tau()/FFT_SIZE/fft_freq_div));
       lcd_printf(FREQUENCIES_XPOS2+100, FREQUENCIES_YPOS, "%d Hz", (int)((sweep_points-1)*mul/get_tau()/FFT_SIZE/fft_freq_div));

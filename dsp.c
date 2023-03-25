@@ -244,6 +244,8 @@ static acc_t acc_samp_s;
 static acc_t acc_samp_c;
 static acc_t acc_ref_s;
 static acc_t acc_ref_c;
+static acc_t acc_delta_s;
+static acc_t acc_delta_c;
 //static acc_t acc_prev_s;
 //static acc_t acc_prev_c;
 #ifdef SIDE_CHANNEL
@@ -251,6 +253,8 @@ static acc_t acc_samp_s2;
 static acc_t acc_samp_c2;
 static acc_t acc_ref_s2;
 static acc_t acc_ref_c2;
+static acc_t acc_delta_s2;
+static acc_t acc_delta_c2;
 #endif
 static phase_t null_phase = 0.5;
 // Cortex M4 DSP instruction use
@@ -413,6 +417,9 @@ calculate_vectors(void)
   // -- delta frequency and phase summation
 
   phase_t delta_angle;
+  acc_delta_s = acc_samp_c * (float)acc_ref_c + acc_samp_s * (float)acc_ref_s;
+  acc_delta_c = (acc_samp_s * (double)acc_ref_c - acc_samp_c * (double)acc_ref_s);
+
   delta_angle =  - vna_atan2f((acc_samp_c * (float)acc_ref_c + acc_samp_s * (float)acc_ref_s),
                          (acc_samp_s * (double)acc_ref_c - acc_samp_c * (double)acc_ref_s)) / VNA_PI;
 
@@ -447,6 +454,7 @@ calculate_vectors(void)
 
 }
 
+#if 0
 float get_freq_a(void)
 {
   float df = (summed_ref_angle_increment / gamma_count) // pll_delta_phase
@@ -470,6 +478,7 @@ float get_freq_delta(void)
   df /= (config._bandwidth+SAMPLE_OVERHEAD) * AUDIO_SAMPLES_COUNT;
   return (df);
 }
+#endif
 
 inline float my_fabs(float x)
 {
@@ -482,32 +491,32 @@ inline float my_fabs(float x)
 static phase_t side_aver;
 #endif
 int
-calculate_gamma(phase_t gamma[4], uint16_t tau)
+calculate_gamma(phase_t gamma[MAX_MEASURED], uint16_t tau)
 {
   decimated_tau = tau / config.decimation;
 #ifndef CALC_DELTA_ANGLE
-  gamma[1] = summed_samp_angle/tau;
+  gamma[B_PHASE] = summed_samp_angle/tau;
 #ifndef CALC_DELTA_ANGLE
-  gamma[1] += null_phase;
+  gamma[B_PHASE] += null_phase;
 #endif
-  WRAP_FULL_PHASE(gamma[1]);
+  WRAP_FULL_PHASE(gamma[B_PHASE]);
 #endif
 
-  gamma[2] = summed_ref_angle/decimated_tau;
-  WRAP_FULL_PHASE(gamma[2]);
+  gamma[A_PHASE] = summed_ref_angle/decimated_tau;
+  WRAP_FULL_PHASE(gamma[A_PHASE]);
 
 //  df *= AUDIO_ADC_FREQ>>1;
 //  df /= config.tau*(config._bandwidth+SAMPLE_OVERHEAD) * AUDIO_SAMPLES_COUNT;
 
 
 #ifdef CALC_DELTA_ANGLE
-  gamma[3] = summed_delta_angle/decimated_tau + null_phase;
+  gamma[D_PHASE] = summed_delta_angle/decimated_tau + null_phase;
   if (VNA_MODE(VNA_MODE_SIDE_CHANNEL) && level_sa > -30)
-    gamma[3] -= side_aver;
+    gamma[D_PHASE] -= side_aver;
 #else
-  gamma[3] = gamma[2] - gamma[1] ;
+  gamma[D_PHASE] = gamma[A_PHASE] - gamma[B_PHASE] ;
 #endif
-  WRAP_FULL_PHASE(gamma[3]);
+  WRAP_FULL_PHASE(gamma[D_PHASE]);
 
 #ifdef SIDE_CHANNEL
   if (VNA_MODE(VNA_MODE_SIDE_CHANNEL)) {
@@ -519,8 +528,12 @@ calculate_gamma(phase_t gamma[4], uint16_t tau)
       side_aver = temp;
     else
       side_aver = (side_aver * S_AVER + temp) / (S_AVER + 1);
-    gamma[0] = side_aver;
+    gamma[S_PHASE] = side_aver;
   }
+  gamma[A_FREQ] = ((summed_ref_angle_increment / gamma_count) * (AUDIO_ADC_FREQ>>1) ) / ((config._bandwidth+SAMPLE_OVERHEAD) * AUDIO_SAMPLES_COUNT);
+  gamma[B_FREQ] = ((summed_samp_angle_increment / gamma_count) * (AUDIO_ADC_FREQ>>1) ) / ((config._bandwidth+SAMPLE_OVERHEAD) * AUDIO_SAMPLES_COUNT);
+  gamma[D_FREQ] = ((summed_delta_angle_increment / gamma_count) * (AUDIO_ADC_FREQ>>1) ) / ((config._bandwidth+SAMPLE_OVERHEAD) * AUDIO_SAMPLES_COUNT);
+
 #endif
   if (!(VNA_MODE(VNA_MODE_WIDE))) {
     if (current_props._fft_mode == FFT_AMP && p_sweep < requested_points){
@@ -533,6 +546,12 @@ calculate_gamma(phase_t gamma[4], uint16_t tau)
       float* tmp  = (float*)spi_buffer;
       tmp[p_sweep * 2 + 0] = (float)acc_samp_c;
       tmp[p_sweep * 2 + 1] = (float)acc_samp_s;
+      p_sweep++;
+    }
+    if (current_props._fft_mode == FFT_PHASE && p_sweep < requested_points){
+      float* tmp  = (float*)spi_buffer;
+      tmp[p_sweep * 2 + 0] = sinf(gamma[D_PHASE] * VNA_PI);
+      tmp[p_sweep * 2 + 1] = cosf(gamma[D_PHASE] * VNA_PI);
       p_sweep++;
     }
   }

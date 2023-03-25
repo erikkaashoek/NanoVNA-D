@@ -905,7 +905,7 @@ static UI_FUNCTION_ADV_CALLBACK(menu_format_acb)
 #endif
       b->p1.text = get_trace_typename(format, -1);
 
-    if (current_trace != TRACE_INVALID && trace[current_trace].type == format && trace[current_trace].channel == channel)
+    if (current_trace != TRACE_INVALID && trace[current_trace].type == format)// && trace[current_trace].channel == channel)
       b->icon = BUTTON_ICON_CHECK;
     return;
   }
@@ -1158,8 +1158,6 @@ const vna_mode_data_t vna_mode_data[] = {
   [VNA_MODE_INTERNAL_SIDE]= {0, REDRAW_AREA},
   [VNA_MODE_PNA]          = {0, REDRAW_AREA},
   [VNA_MODE_WIDE]         = {0, REDRAW_AREA | REDRAW_FREQUENCY},
-  [VNA_MODE_UNWRAP]       = {0, REDRAW_AREA},
-
 };
 
 void apply_VNA_mode(uint16_t idx, uint16_t value) {
@@ -1218,15 +1216,11 @@ void apply_VNA_mode(uint16_t idx, uint16_t value) {
       if (current_props._fft_mode == FFT_OFF || current_props._fft_mode == FFT_PHASE)
         apply_VNA_mode(VNA_MODE_WIDE, VNA_MODE_CLR);
       if (VNA_MODE(VNA_MODE_WIDE)) {
-        si5351_set_frequency_offset(AUDIO_ADC_FREQ/4);
+        si5351_set_frequency_offset(AUDIO_ADC_FREQ/4);      // 48kHz
       } else {
-        si5351_set_frequency_offset(AUDIO_ADC_FREQ/8);
+        si5351_set_frequency_offset(AUDIO_ADC_FREQ/8);      // 24kHz
       }
       si5351_set_frequency(get_sweep_frequency(ST_START), current_props._power);
-      break;
-    case VNA_MODE_UNWRAP:
-      if (VNA_MODE(VNA_MODE_UNWRAP))
-        reset_phase_unwrap();
       break;
     case VNA_MODE_INTERNAL_SIDE:
       si5351_disable_output();
@@ -1234,6 +1228,34 @@ void apply_VNA_mode(uint16_t idx, uint16_t value) {
       break;
   }
 }
+
+
+
+static UI_FUNCTION_ADV_CALLBACK(menu_log_type_acb)
+{
+  if (b) {
+    b->icon = current_props.log_type == data ? BUTTON_ICON_GROUP_CHECKED : BUTTON_ICON_GROUP;
+    return;
+  }
+  current_props.log_type = data;
+  if (data == LOG_UNWRAPPED_PHASE)
+    reset_phase_unwrap();
+  menu_move_back(false);
+}
+
+static const char *log_type_text[3] = {"PHASE", "UNWRAPPED", "FREQUENCY"};
+const menuitem_t menu_log_type[];
+
+static UI_FUNCTION_ADV_CALLBACK(menu_log_type_sel_acb)
+{
+  (void)data;
+  if (b){
+    b->p1.text = log_type_text[current_props.log_type];
+    return;
+  }
+  menu_push_submenu(menu_log_type);
+}
+
 
 static UI_FUNCTION_ADV_CALLBACK(menu_vna_mode_acb)
 {
@@ -1390,18 +1412,6 @@ static UI_FUNCTION_CALLBACK(menu_marker_op_cb)
       set_sweep_frequency(ST_STOP, freq2);
     }
     break;
-#if 0
-  case UI_MARKER_EDELAY:
-    {
-      if (current_trace == TRACE_INVALID)
-        break;
-      float (*array)[4] = measured[trace[current_trace].channel];
-      int index = markers[active_marker].index;
-      float v = groupdelay_from_array(index, array[index]);
-      set_electrical_delay(electrical_delay + v);
-    }
-    break;
-#endif
   }
   ui_mode_normal();
 }
@@ -1739,35 +1749,6 @@ static void vna_save_file(char *name, uint8_t format)
   if (res == FR_OK) {
 //    const char *s_file_format;
     switch(format) {
-#if 0
-      /*
-       *  Save touchstone file for VNA (use rev 1.1 format)
-       *  https://en.wikipedia.org/wiki/Touchstone_file
-       */
-      case FMT_S1P_FILE:
-      case FMT_S2P_FILE:
-      buf_8  = (char *)spi_buffer;
-      // Write SxP file
-      if (format == FMT_S1P_FILE){
-        s_file_format = s1_file_param;
-        // write sxp header (not write NULL terminate at end)
-        res = f_write(fs_file, s1_file_header, sizeof(s1_file_header)-1, &size);
-//        total_size+=size;
-      }
-      else {
-        s_file_format = s2_file_param;
-        // Write s2p header (not write NULL terminate at end)
-        res = f_write(fs_file, s2_file_header, sizeof(s2_file_header)-1, &size);
-//        total_size+=size;
-      }
-      // Write all points data
-      for (i = 0; i < sweep_points && res == FR_OK; i++) {
-        size = plot_printf(buf_8, 128, s_file_format, getFrequency(i), measured[0][i][0], measured[0][i][1], measured[0][i][2], measured[0][i][3]);
-//        total_size+=size;
-        res = f_write(fs_file, buf_8, size, &size);
-      }
-      break;
-#endif
       /*
        *  Save bitmap file (use v4 format allow set RGB mask)
        */
@@ -1845,7 +1826,7 @@ void flush_disk_log(void)
   for (int i = 0; i < disk_log_index && res == FR_OK; i++) {
     char *buf_8  = (char *)spi_buffer;
     UINT size;
-    if (VNA_MODE(VNA_MODE_UNWRAP))
+    if ( current_props.log_type == LOG_UNWRAPPED_PHASE)
       size = plot_printf(buf_8, 128, "%.12e\r\n",  disk_log_data[i]);
     else
       size = plot_printf(buf_8, 128, "%f\r\n", (float) disk_log_data[i]);
@@ -2154,10 +2135,18 @@ const menuitem_t menu_display[] = {
   { MT_NEXT, 0, NULL, menu_back } // next-> menu_back
 };
 
+const menuitem_t menu_log_type[] =
+{
+  { MT_ADV_CALLBACK,    LOG_PHASE,           "PHASE",                menu_log_type_acb },
+  { MT_ADV_CALLBACK,    LOG_UNWRAPPED_PHASE, "UNWRAPPED\nPHASE",     menu_log_type_acb },
+  { MT_ADV_CALLBACK,    LOG_FREQUENCY,       "FREQUENCY",            menu_log_type_acb },
+  { MT_NEXT, 0, NULL, menu_back } // next-> menu_back
+};
+
 const menuitem_t menu_output[] = {
+  { MT_ADV_CALLBACK,    0,                      "LOG\n " R_LINK_COLOR "%s",        menu_log_type_sel_acb },
   { MT_ADV_CALLBACK,    VNA_MODE_USB_LOG,       "USB\nLOG",         menu_vna_mode_acb },
   { MT_ADV_CALLBACK,    VNA_MODE_DISK_LOG,      "DISK\nLOG",        menu_vna_mode_acb },
-  { MT_ADV_CALLBACK,    VNA_MODE_UNWRAP,        "UNWRAP",           menu_vna_mode_acb},
   { MT_ADV_CALLBACK,    VNA_MODE_AUTO_NAME,     "AUTO\nNAME",       menu_vna_mode_acb},
   { MT_CALLBACK,        FMT_BMP_FILE,           "SAVE\nSCREENSHOT", menu_sdcard_cb },
 #ifdef __SD_FILE_BROWSER__

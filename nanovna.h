@@ -341,7 +341,10 @@ typedef uint32_t freq_t;
 #define POINTS_COUNT_DEFAULT   SWEEP_POINTS_MAX
 #endif
 
-extern phase_t measured[1][SWEEP_POINTS_MAX][4];
+
+enum {S_PHASE, B_PHASE, A_PHASE, D_PHASE, B_FREQ, A_FREQ, D_FREQ, MAX_MEASURED };
+
+extern phase_t measured[SWEEP_POINTS_MAX][MAX_MEASURED];
 
 #define CAL_TYPE_COUNT  1
 #define CAL_LOAD        0
@@ -553,22 +556,6 @@ typedef int16_t  audio_sample_t;
 #define HALF_PHASE  1.0
 #define FULL_PHASE  2.0
 
-// gamma
-#define SIDE_PHASE  0
-#define B_PHASE     1
-#define A_PHASE     2
-#define DELTA_PHASE 3
-#define B_FREQ      4
-#define A_FREQ      5
-#define DELTA_FREQ  6
-
-
-typedef struct {
-  phase_t delta_phase;
-  phase_t freq_a;
-  phase_t freq_b;
-  phase_t side_delta_phase;
-} result_t;
 
 #define WRAP_FULL_PHASE(X)   if ((X) > HALF_PHASE) (X) -= FULL_PHASE; if ((X) < -HALF_PHASE) (X) += FULL_PHASE;
 #define UNWRAP_PHASE(X,LAST_X) if ((X - LAST_X) < -HALF_PHASE) X += FULL_PHASE; if ((X - LAST_X) > HALF_PHASE) X -= FULL_PHASE; LAST_X = X;
@@ -1046,7 +1033,6 @@ enum {
   VNA_MODE_INTERNAL_SIDE,
   VNA_MODE_PNA,
   VNA_MODE_WIDE,
-  VNA_MODE_UNWRAP,
 };
 
 #define VNA_MODE_PLL_ON           (1<<VNA_MODE_PLL)
@@ -1094,7 +1080,7 @@ enum {
 typedef struct trace {
   uint8_t enabled;
   uint8_t type;
-  uint8_t channel;
+ // uint8_t channel;
   uint8_t auto_scale;
   float scale;
   float refpos;
@@ -1113,6 +1099,7 @@ typedef struct marker {
 
 enum {PULL_OFFSET, PULL_FUNDAMENTAL, PULL_SECOND_SHIFT, PULL_SECOND, MAX_PULL};
 enum { FFT_OFF, FFT_PHASE, FFT_AMP, FFT_B };
+enum { LOG_PHASE, LOG_UNWRAPPED_PHASE, LOG_FREQUENCY };
 
 typedef struct config {
   uint32_t magic;
@@ -1155,6 +1142,7 @@ typedef struct properties {
   uint8_t  _cal_power;
   uint8_t  _measure;
   uint8_t  _fft_mode;
+  uint8_t   log_type;
   uint16_t _cal_sweep_points;
   uint16_t _cal_status;
   trace_t  _trace[TRACES_MAX];

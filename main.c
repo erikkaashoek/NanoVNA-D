@@ -107,9 +107,6 @@ static volatile vna_shellcmd_t  shell_function = 0;
 #define ENABLE_SD_CARD_COMMAND
 #endif
 
-//static void apply_CH0_error_term(float data[4], float c_data[CAL_TYPE_COUNT][2]);
-//static void apply_CH1_error_term(float data[4], float c_data[CAL_TYPE_COUNT][2]);
-//static void cal_interpolate(int idx, freq_t f, float data[CAL_TYPE_COUNT][2]);
 static void transform_domain(uint16_t ch_mask);
 static uint16_t get_sweep_mask(void);
 void update_frequencies(void);
@@ -124,10 +121,12 @@ volatile uint16_t p_sweep = 0;
 volatile int requested_points;
 uint16_t old_p_sweep;
 // Sweep measured data
-phase_t measured[1][SWEEP_POINTS_MAX][4];
+phase_t measured[SWEEP_POINTS_MAX][MAX_MEASURED];
+
+
 #define TEMP_COUNT 64
 #define TEMP_MASK 0x3f
-phase_t temp_measured[TEMP_COUNT][4];
+phase_t temp_measured[TEMP_COUNT][MAX_MEASURED];
 volatile int temp_input = 0;
 volatile int temp_output = 0;
 
@@ -189,62 +188,6 @@ void my_debug_log(int offs, char *log){
 #define DEBUG_LOG(offs, text)    my_debug_log(offs, text);
 #else
 #define DEBUG_LOG(offs, text)
-#endif
-
-#ifdef __USE_SMOOTH__
-static float arifmetic_mean(float v0, float v1, float v2){
-  return (v0+2*v1+v2)/4;
-}
-
-static float geometry_mean(float v0, float v1, float v2){
-  float v = vna_cbrtf(vna_fabsf(v0*v1*v2));
-  if (v0+v1+v2 < 0) v = -v;
-  return v;
-}
-
-uint8_t smooth_factor = 0;
-void set_smooth_factor(uint8_t factor){
-  if (factor > 8) factor = 8;
-  smooth_factor = factor;
-  request_to_redraw(REDRAW_CAL_STATUS);
-}
-
-uint8_t get_smooth_factor(void) {
-  return smooth_factor;
-}
-
-// Allow smooth complex data point array (this remove noise, smooth power depend form count)
-// see https://terpconnect.umd.edu/~toh/spectrum/Smoothing.html
-static void measurementDataSmooth(uint16_t ch_mask){
-  int j;
-//  ch_mask = 2;
-//  memcpy(measured[0], measured[1], sizeof(measured[0]));
-  float (*smooth_func)(float v0, float v1, float v2) = VNA_MODE(VNA_MODE_SMOOTH) ? arifmetic_mean : geometry_mean;
-  for (int ch = 0; ch < 2; ch++,ch_mask>>=1) {
-    if ((ch_mask&1)==0) continue;
-    int count = 1<<(smooth_factor-1), n;
-    float *data = measured[ch][0];
-    for (n = 0; n < count; n++){
-      float prev_re = data[2*0  ];
-      float prev_im = data[2*0+1];
-// first point smooth (use first and second points), disabled it made phase shift
-//      data[0] = smooth_func(prev_re, prev_re, data[2  ]);
-//      data[1] = smooth_func(prev_im, prev_im, data[2+1]);
-// simple data smooth on 3 points
-      for (j = 1; j < sweep_points - 1; j++){
-        float old_re = data[2*j  ]; // save current data point for next point smooth
-        float old_im = data[2*j+1];
-        data[2*j  ] = smooth_func(prev_re, data[2*j  ], data[2*j+2]);
-        data[2*j+1] = smooth_func(prev_im, data[2*j+1], data[2*j+3]);
-        prev_re = old_re;
-        prev_im = old_im;
-      }
-// last point smooth, disabled it made phase shift
-//      data[2*j  ] = smooth_func(data[2*j  ], data[2*j  ], prev_re);
-//      data[2*j+1] = smooth_func(data[2*j+1], data[2*j+1], prev_im);
-    }
-  }
-}
 #endif
 
 static THD_WORKING_AREA(waThread1, 1024);
@@ -400,6 +343,11 @@ kaiser_window_ext(uint32_t k, uint32_t n, uint16_t beta)
 }
 #endif
 
+#ifdef USE_FFT_WINDOW_BUFFER
+    // Cache window function data to static buffer
+    static float kaiser_data[FFT_SIZE];
+#endif
+
 static void
 transform_domain(uint16_t ch_mask)
 {
@@ -467,10 +415,9 @@ transform_domain(uint16_t ch_mask)
   // Made Time Domain Calculations
 //  for (int ch = 0; ch < 2; ch++,ch_mask>>=1) {
   {
-    int ch = 0;
     // Prepare data in tmp buffer (use spi_buffer), apply window function and constant correction factor
     float* tmp  = (float*)spi_buffer;
-    phase_t *data = measured[ch][0];
+    phase_t *data = measured[0];
 #if 1
     for (i = 0; i < FFT_SIZE; i++) {
 #ifdef USE_FFT_WINDOW_BUFFER
@@ -490,8 +437,8 @@ transform_domain(uint16_t ch_mask)
 #else
       float w = kaiser_window_ext(i + offset, window_size, beta) * window_scale;
 #endif
-      tmp[i * 2 + 0] = data[i * 4 + 3] * w;
-      tmp[i * 2 + 1] = 0; //data[i * 4 + 1] * w;
+      tmp[i * 2 + 0] = data[i * MAX_MEASURED + 3] * w;
+      tmp[i * 2 + 1] = 0; //data[i * MAX_MEASURED + 1] * w;
     }
     // Fill zeroes last
     for (; i < FFT_SIZE; i++) {
@@ -509,11 +456,11 @@ transform_domain(uint16_t ch_mask)
     // Made FFT in temp buffer
     fft_forward((float(*)[2])tmp);
     // Copy data back
-    if (current_props._fft_mode == FFT_AMP || current_props._fft_mode == FFT_B) {
+    if (current_props._fft_mode == FFT_AMP || current_props._fft_mode == FFT_B || current_props._fft_mode == FFT_PHASE ) {
       fft_points = FFT_SIZE/2;
       if (fft_points > sweep_points/2)
         fft_points = sweep_points/2;
-      data = measured[ch][sweep_points/2];
+      data = measured[sweep_points/2];
       int fft_step = 4;
       if (VNA_MODE(VNA_MODE_WIDE))
        fft_step = 2;
@@ -534,10 +481,10 @@ transform_domain(uint16_t ch_mask)
         if (f < f2) f = f2;
         }
 //#endif
-        f = (data[i * 4 + 1] * transform_count + f) / ( transform_count+1);
-        data[i * 4 + 1] =  f;
+        f = (data[i * MAX_MEASURED + 1] * transform_count + f) / ( transform_count+1);
+        data[i * MAX_MEASURED + 1] =  f;
       }
-      data = measured[ch][sweep_points/2];
+      data = measured[sweep_points/2];
       tmp = &tmp[FFT_SIZE*2];
       for (i = 0; i < fft_points; i++) {
         float re = tmp[i * -fft_step + -1];
@@ -551,8 +498,8 @@ transform_domain(uint16_t ch_mask)
         if (f < f2) f = f2;
         }
 //#endif
-        f = (data[(i+1) * -4 + 1] * transform_count + f) / ( transform_count+1);
-        data[(i+1) * -4 + 1] =  f;
+        f = (data[(i+1) * -MAX_MEASURED + 1] * transform_count + f) / ( transform_count+1);
+        data[(i+1) * -MAX_MEASURED + 1] =  f;
       }
 
     } else {
@@ -563,8 +510,8 @@ transform_domain(uint16_t ch_mask)
         float re = tmp[i * 2 + 0];
         float im = tmp[i * 2 + 1];
         volatile float f =  vna_sqrtf(re*re+im*im);
-        f = (data[i * 4 + 1] * transform_count + f) / ( transform_count+1);
-        data[i * 4 + 1] =  f;
+        f = (data[i * MAX_MEASURED + 1] * transform_count + f) / ( transform_count+1);
+        data[i * MAX_MEASURED + 1] =  f;
       }
     }
     if ((props_mode & TD_AVERAGE) && transform_count < max_average_count)
@@ -873,23 +820,18 @@ VNA_SHELL_FUNCTION(cmd_tau)
   set_tau(freq);
 }
 
-VNA_SHELL_FUNCTION(cmd_unwrap)
+VNA_SHELL_FUNCTION(cmd_log_type)
 {
   if (argc != 1) goto usage;
   //                              0   1
-  static const char cmd_list[] = "off|on";
-  switch (get_str_index(argv[0], cmd_list)) {
-    case 0:
-      apply_VNA_mode(VNA_MODE_UNWRAP, VNA_MODE_CLR);
-      return;
-    case 1:
-      apply_VNA_mode(VNA_MODE_UNWRAP, VNA_MODE_SET);
-      return;
-    default:
-      break;
+  static const char cmd_list[] = "phase|unwrapped|frequency";
+  int index = get_str_index(argv[0], cmd_list);
+  if (index >= 0) {
+    current_props.log_type = index;
+    return;
   }
 usage:
-  shell_printf("usage: unwrap {%s}" VNA_SHELL_NEWLINE_STR, cmd_list);
+  shell_printf("usage: log_type {%s}" VNA_SHELL_NEWLINE_STR, cmd_list);
 }
 
 
@@ -1015,13 +957,13 @@ VNA_SHELL_FUNCTION(cmd_data)
 {
   int i;
   int sel = 0;
-  phase_t (*array)[4];
+  phase_t (*array)[MAX_MEASURED];
   if (argc == 1)
     sel = my_atoi(argv[0]);
   if (sel < 0 || sel >=7)
     goto usage;
 
-  array = measured[sel];
+  array = &measured[sel][0];
 
   for (i = 0; i < sweep_points; i++)
     shell_printf("%f %f" VNA_SHELL_NEWLINE_STR, array[i][0], array[i][1]);
@@ -1125,12 +1067,11 @@ properties_t current_props;
 
 // NanoVNA Default settings
 static const trace_t def_trace[TRACES_MAX] =
-{//enable, type, channel, auto_scale, scale, refpos, min, max
-  { TRUE, TRC_DPHASE, 0, true, 90.0, 0,0,0 },
-  { TRUE, TRC_AFREQ, 0, true, 0.01, 0,0,0 },
-  { TRUE, TRC_DFREQ, 0, true, 0.01, 0,0,0 },
-  { TRUE, TRC_RESIDUE,  0, true, 0.00001,  0,0,0 },
-//  { FALSE, TRC_PHASE,  0, MS_REIM, 90.0, 0,0,0 }
+{//enable, type, auto_scale, scale, refpos, min, max
+  { TRUE, TRC_DPHASE, true, 90.0, 0,0,0 },
+  { TRUE, TRC_AFREQ, true, 0.01, 0,0,0 },
+  { TRUE, TRC_DFREQ, true, 0.01, 0,0,0 },
+  { TRUE, TRC_RESIDUE,  true, 0.00001,  0,0,0 },
 };
 
 static const marker_t def_markers[MARKERS_MAX] = {
@@ -1361,10 +1302,14 @@ void i2s_lld_serve_rx_interrupt(uint32_t flags) {
         dsp_ready = true;
 
       } else {
-        aver_freq_a = get_freq_a();
-        aver_freq_b = get_freq_b();
-        aver_freq_delta = get_freq_delta();
-        calculate_gamma(temp_measured[temp_input++], config.tau);              // Calculate average angles and store in temp_measured
+//        aver_freq_a = get_freq_a();
+//        aver_freq_b = get_freq_b();
+//        aver_freq_delta = get_freq_delta();
+        calculate_gamma(temp_measured[temp_input], config.tau);              // Calculate average angles and store in temp_measured
+        aver_freq_a = temp_measured[temp_input][A_FREQ];
+        aver_freq_b = temp_measured[temp_input][B_FREQ];
+        aver_freq_delta = temp_measured[temp_input][D_FREQ];
+        temp_input++;
         temp_input &= TEMP_MASK;
         if (temp_input == temp_output) {
 #if 0
@@ -1435,22 +1380,6 @@ static uint16_t get_sweep_mask(void){
   if (s21_offset)                        ch_mask|= SWEEP_APPLY_S21_OFFSET;
   return ch_mask;
 }
-#if 0
-static void applyEDelay(float data[2], float s, float c){
-  float real = data[0];
-  float imag = data[1];
-  data[0] = real * c - imag * s;
-  data[1] = imag * c + real * s;
-}
-
-static void applyOffset(float data[2], float offset){
-  data[0]*= offset;
-  data[1]*= offset;
-}
-#endif
-#ifdef __VNA_Z_RENORMALIZATION__
-#include "vna_modules/vna_renorm.c"
-#endif
 
 #if 1
 float prev_v;
@@ -1582,9 +1511,9 @@ void do_agc(void)
   r_gain = 0;
   get_value_cb_t calc;
   calc = trace_info_list[TRC_ALOGMAG].get_value_cb;
-  level_a = calc(p_sweep, measured[0][0]);                                          // Get value
+  level_a = calc(p_sweep, measured[0]);                                          // Get value
   calc = trace_info_list[TRC_BLOGMAG].get_value_cb;
-  level_b = calc(p_sweep, measured[0][0]);                                          // Get value
+  level_b = calc(p_sweep, measured[0]);                                          // Get value
   l_gain = old_l_gain;
   r_gain = old_r_gain;
 #ifdef NANOVNA_F303
@@ -1605,14 +1534,14 @@ void do_agc(void)
   }
   // Get level including gain
   calc = trace_info_list[TRC_ALOGMAG].get_value_cb;
-  level_a = calc(p_sweep, measured[0][p_sweep-1]);                                          // Get value
+  level_a = calc(p_sweep, measured[p_sweep-1]);                                          // Get value
   calc = trace_info_list[TRC_BLOGMAG].get_value_cb;
-  level_b = calc(p_sweep, measured[0][p_sweep-1]);                                          // Get value
+  level_b = calc(p_sweep, measured[p_sweep-1]);                                          // Get value
 #ifdef SIDE_CHANNEL
   calc = trace_info_list[TRC_SALOGMAG].get_value_cb;
-  level_sa = calc(p_sweep, measured[0][p_sweep-1]);                                          // Get value
+  level_sa = calc(p_sweep, measured[p_sweep-1]);                                          // Get value
   calc = trace_info_list[TRC_SBLOGMAG].get_value_cb;
-  level_sb = calc(p_sweep, measured[0][p_sweep-1]);                                          // Get value
+  level_sb = calc(p_sweep, measured[p_sweep-1]);                                          // Get value
 #endif
 }
 
@@ -1642,7 +1571,7 @@ static bool sweep(bool break_on_operation, uint16_t mask)
 
 //      palSetPad(GPIOC, GPIOC_LED);
       // sample_count =
-//      calculate_gamma(measured[0][p_sweep]);              // Measure transmission coefficient
+//      calculate_gamma(measured[p_sweep]);              // Measure transmission coefficient
 //      palClearPad(GPIOC, GPIOC_LED);
 //      int t = 0;
 //      uint8_t type = trace[t].type;
@@ -1768,8 +1697,8 @@ fetch_next:
       if (props_mode & TD_SAMPLE) {
 //        p_sweep = 0;
         while (p_sweep < sweep_points /* && p_sweep < AUDIO_SAMPLES_COUNT */ ) {
-          measured[0][p_sweep][0] = (float)*filled_buffer++;
-          measured[0][p_sweep][1] = (float)*filled_buffer++;
+          measured[p_sweep][0] = (float)*filled_buffer++;
+          measured[p_sweep][1] = (float)*filled_buffer++;
           p_sweep++;
         }
         if (p_sweep == sweep_points) {
@@ -1779,8 +1708,8 @@ fetch_next:
         continue;
       } else if (props_mode & TD_PNA) {
         while (p_sweep < sweep_points /* && p_sweep < AUDIO_SAMPLES_COUNT */ ) {
-          measured[0][p_sweep][0] = temp_measured[temp_output][2];
-          measured[0][p_sweep][1] = temp_measured[temp_output++][3];
+          measured[p_sweep][0] = temp_measured[temp_output][2];
+          measured[p_sweep][1] = temp_measured[temp_output++][3];
           temp_output &= TEMP_MASK;
           p_sweep++;
         }
@@ -1790,45 +1719,51 @@ fetch_next:
         continue;
       }
 
-      double phase = temp_measured[temp_output][3];
-      double phase_output = phase/2;
-      double unwrapped_phase = phase + phase_wraps;     // Unwrap
-
-      if (VNA_MODE(VNA_MODE_UNWRAP)) {
-      double delta_phase = unwrapped_phase - prev_phase; // Update phase_wraps
-      if (delta_phase > HALF_PHASE) {
-         phase_wraps -= FULL_PHASE;
-         unwrapped_phase -= FULL_PHASE;
-      }
-      if (delta_phase < -HALF_PHASE) {
-         phase_wraps += FULL_PHASE;
-         unwrapped_phase += FULL_PHASE;
-      }
-      prev_phase = unwrapped_phase;
-      freq_t f = get_sweep_frequency(ST_START);
-      phase_output = unwrapped_phase / 2 / f;       // scaled to frequency
-      }
-
-
-//      float v = temp_measured[temp_output][3]/2;
-      if (VNA_MODE(VNA_MODE_DISK_LOG))
-        disk_log(phase_output);
-      if (VNA_MODE(VNA_MODE_USB_LOG)) {
-        if (VNA_MODE(VNA_MODE_UNWRAP))
-          shell_printf("%.12e ChA\r\n", phase_output);
-        else
-          shell_printf("%f ChA\r\n", (float)phase_output);
-#ifdef SIDE_CHANNEL
-        if (VNA_MODE(VNA_MODE_DUMP_SIDE)) {
-          float v2 = temp_measured[temp_output][0]/2;
-          shell_printf("%e ChB\r\n", v2);
+      if (VNA_MODE(VNA_MODE_DISK_LOG) || VNA_MODE(VNA_MODE_USB_LOG)) {
+        double log_output;
+        if (current_props.log_type == LOG_FREQUENCY) {
+          log_output = temp_measured[temp_output][D_FREQ];
+        } else if (current_props.log_type == LOG_PHASE) {
+          log_output = temp_measured[temp_output][D_PHASE]/2;
+        } else {            // Unwrapped phase
+          double phase = temp_measured[temp_output][D_PHASE];
+          double unwrapped_phase = phase + phase_wraps;     // Unwrap
+          double delta_phase = unwrapped_phase - prev_phase; // Update phase_wraps
+          if (delta_phase > HALF_PHASE) {
+            phase_wraps -= FULL_PHASE;
+            unwrapped_phase -= FULL_PHASE;
+          }
+          if (delta_phase < -HALF_PHASE) {
+            phase_wraps += FULL_PHASE;
+            unwrapped_phase += FULL_PHASE;
+          }
+          prev_phase = unwrapped_phase;
+          freq_t f = get_sweep_frequency(ST_START);
+          log_output = unwrapped_phase / 2 / f;       // scaled to frequency
         }
+
+
+        //      float v = temp_measured[temp_output][D_PHASE]/2;
+        if (VNA_MODE(VNA_MODE_DISK_LOG))
+          disk_log(log_output);
+        if (VNA_MODE(VNA_MODE_USB_LOG)) {
+          if (current_props.log_type == LOG_UNWRAPPED_PHASE)
+            shell_printf("%.12e ChA\r\n", log_output);
+          else
+            shell_printf("%f ChA\r\n", (float)log_output);
+#ifdef SIDE_CHANNEL
+          if (VNA_MODE(VNA_MODE_DUMP_SIDE)) {
+            float v2 = temp_measured[temp_output][S_PHASE]/2;
+            shell_printf("%e ChB\r\n", v2);
+          }
 #endif
+        }
       }
+
       if (current_props._fft_mode == FFT_PHASE) {
-        float* tmp  = (float*)spi_buffer;
-        tmp[p_sweep * 2 + 0] = unwrapped_phase;
-        tmp[p_sweep * 2 + 1] = 0;
+ //       float* tmp  = (float*)spi_buffer;
+ //       tmp[p_sweep * 2 + 0] = sinf(phase * VNA_PI / 2);
+ //       tmp[p_sweep * 2 + 1] = cosf(phase * VNA_PI / 2);
 //        shell_printf("%d %f %f %f\r\n", p_sweep,  tmp[p_sweep * 2 + 0]);
       }
       else if (current_props._fft_mode == FFT_AMP || current_props._fft_mode == FFT_B) {
@@ -1841,12 +1776,15 @@ fetch_next:
       } else
       if (p_sweep < sweep_points) {
 #ifdef SIDE_CHANNEL
-        measured[0][p_sweep][0] = temp_measured[temp_output][0];
+        measured[p_sweep][S_PHASE] = temp_measured[temp_output][S_PHASE];
 #endif
-        measured[0][p_sweep][2] = temp_measured[temp_output][2];
-        measured[0][p_sweep][3] = temp_measured[temp_output][3];
+        measured[p_sweep][A_PHASE] = temp_measured[temp_output][A_PHASE];
+        measured[p_sweep][D_PHASE] = temp_measured[temp_output][D_PHASE];
+        measured[p_sweep][A_FREQ] = temp_measured[temp_output][A_FREQ];
+        measured[p_sweep][B_FREQ] = temp_measured[temp_output][B_FREQ];
+        measured[p_sweep][D_FREQ] = temp_measured[temp_output][D_FREQ];
       }
-      if (current_props._fft_mode != FFT_AMP && current_props._fft_mode != FFT_B) p_sweep++;
+      if (current_props._fft_mode != FFT_AMP && current_props._fft_mode != FFT_B  && current_props._fft_mode != FFT_PHASE) p_sweep++;
       temp_output++;
       temp_output &= TEMP_MASK;
 //      shell_printf("out %d\r\n", temp_output);
@@ -1854,7 +1792,7 @@ fetch_next:
         if (temp_input != temp_output && !(operation_requested && break_on_operation))
           goto do_compress;
 
-//      shell_printf("%d %f %f %f\r\n", p_sweep,  measured[0][p_sweep-1][1],  measured[0][p_sweep-1][2],  measured[0][p_sweep-1][3]);
+//      shell_printf("%d %f %f %f\r\n", p_sweep,  measured[p_sweep-1][1],  measured[p_sweep-1][2],  measured[p_sweep-1][3]);
 
       //================================================
       // Place some code thats need execute while delay
@@ -1862,7 +1800,7 @@ fetch_next:
 
       // else
       // sample_count =
-      //        calculate_gamma(measured[0][p_sweep]);              // Measure all
+      //        calculate_gamma(measured[p_sweep]);              // Measure all
 
 
       if (VNA_MODE(VNA_MODE_SCROLLING) && p_sweep >=2) break;
@@ -1881,7 +1819,7 @@ fetch_next:
 
   if (config.tau <= 10) {
     get_value_cb_t calc = trace_info_list[GET_DFREQ].get_value_cb; // dfreq port 1
-    phase_t (*array)[4] = measured[0];
+    phase_t (*array)[MAX_MEASURED] = measured;
     //  const char *format = index_ref >= 0 ? trace_info_list[type].dformat : trace_info_list[type].format; // Format string
     phase_t v = 0;
     for (int i =0; i<sweep_points-1; i++) {
@@ -1897,7 +1835,7 @@ fetch_next:
   {
     reset_regression();
     get_value_cb_t calc = trace_info_list[GET_DPHASE].get_value_cb; // dfreq port 1
-    phase_t (*array)[4] = measured[0];
+    phase_t (*array)[MAX_MEASURED] = measured;
     //  const char *format = index_ref >= 0 ? trace_info_list[type].dformat : trace_info_list[type].format; // Format string
     for (int i =0; i<p_sweep; i++) {
       phase_t v = calc(i, array[i])/360;                                          // Get value
@@ -1913,11 +1851,11 @@ fetch_next:
 
 
   // -------------------- Auto set CW frequency ----------------------
-  phase_t (*array)[4];
+  phase_t (*array)[MAX_MEASURED];
   get_value_cb_t calc;
 #if 0
   calc = trace_info_list[GET_AFREQ].get_value_cb; // dfreq port 1
-  array = measured[0];
+  array = measured;
   //  const char *format = index_ref >= 0 ? trace_info_list[type].dformat : trace_info_list[type].format; // Format string
   float v = 0;
   for (int i = (VNA_MODE(VNA_MODE_SCROLLING) ?  p_sweep-2: 0); i<p_sweep-1; i++) {
@@ -1960,7 +1898,7 @@ fetch_next:
 
 #if 1
   calc = trace_info_list[GET_DPHASE].get_value_cb; // dfreq port 1
-  array = measured[0];
+  array = measured;
   v = 0;
   for (int i=0; i<p_sweep; i++) {
     v += calc(i, array[i]);                                          // Get value
@@ -1975,11 +1913,14 @@ fetch_next:
     if (p_sweep == sweep_points) {
       for (int i=0;i<sweep_points-1;i++) {
 #ifdef SIDE_CHANNEL
-        measured[0][i][0] = measured[0][i+1][0];
+        measured[i][S_PHASE] = measured[i+1][S_PHASE];
 #endif
-//        measured[0][i][1] = measured[0][i+1][1];
-        measured[0][i][2] = measured[0][i+1][2];
-        measured[0][i][3] = measured[0][i+1][3];
+//        measured[i][B_PHASE] = measured[i+1][B_PHASE];
+        measured[i][A_PHASE] = measured[i+1][A_PHASE];
+        measured[i][D_PHASE] = measured[i+1][D_PHASE];
+        measured[i][A_FREQ] = measured[i+1][A_FREQ];
+        measured[i][B_FREQ] = measured[i+1][B_FREQ];
+        measured[i][D_FREQ] = measured[i+1][D_FREQ];
       }
       p_sweep--;
     }
@@ -2253,15 +2194,13 @@ VNA_SHELL_FUNCTION(cmd_scan)
       shell_write(&points, sizeof(uint16_t));
       for (int i = 0; i < points; i++) {
         if (mask & SCAN_MASK_OUT_FREQ ) {freq_t f = getFrequency(i); shell_write(&f, sizeof(freq_t));} // 4 bytes .. frequency
-        if (mask & SCAN_MASK_OUT_DATA0) shell_write(&measured[0][i][0], sizeof(float)* 2);             // 4+4 bytes .. S11 real/imag
-        if (mask & SCAN_MASK_OUT_DATA1) shell_write(&measured[1][i][0], sizeof(float)* 2);             // 4+4 bytes .. S21 real/imag
+        if (mask & SCAN_MASK_OUT_DATA0) shell_write(&measured[i][0], sizeof(float)* 2);             // 4+4 bytes .. S11 real/imag
       }
     } else {
       for (int i = 0; i < points; i++) {
         if (mask & SCAN_MASK_OUT_FREQ ) shell_printf(VNA_FREQ_FMT_STR " ", getFrequency(i));
-        if (mask & SCAN_MASK_OUT_DATA0) shell_printf("%f %f ", measured[0][i][0], measured[0][i][1]);
-        if (mask & SCAN_MASK_OUT_DATA1) shell_printf("%f %f ", measured[1][i][0], measured[1][i][1]);
-        shell_printf(VNA_SHELL_NEWLINE_STR);
+        if (mask & SCAN_MASK_OUT_DATA0) shell_printf("%f %f ", measured[i][0], measured[i][1]);
+         shell_printf(VNA_SHELL_NEWLINE_STR);
       }
     }
   }
@@ -2460,421 +2399,6 @@ usage:
                "\tsweep {%s} {freq(Hz)}" VNA_SHELL_NEWLINE_STR, sweep_cmd);
 }
 
-#if 0
-static void
-eterm_set(int term, float re, float im)
-{
-  int i;
-  for (i = 0; i < sweep_points; i++) {
-    cal_data[term][i][0] = re;
-    cal_data[term][i][1] = im;
-  }
-}
-
-static void
-eterm_copy(int dst, int src)
-{
-  memcpy(cal_data[dst], cal_data[src], sizeof cal_data[dst]);
-}
-
-static void
-eterm_calc_es(void)
-{
-  int i;
-  for (i = 0; i < sweep_points; i++) {
-    // z=1/(jwc*z0) = 1/(2*pi*f*c*z0)  Note: normalized with Z0
-    // s11ao = (z-1)/(z+1) = (1-1/z)/(1+1/z) = (1-jwcz0)/(1+jwcz0)
-    // prepare 1/s11ao for effeiciency
-#if 0
-    float c = 50e-15;
-    //float c = 1.707e-12;
-    float z0 = 50;
-    float z = 2 * VNA_PI * frequencies[i] * c * z0;
-    float sq = 1 + z*z;
-    float s11aor = (1 - z*z) / sq;
-    float s11aoi = 2*z / sq;
-#else
-    float s11aor = 1.0f;
-    float s11aoi = 0.0f;
-#endif
-    // S11mo’= S11mo - Ed
-    // S11ms’= S11ms - Ed
-    float s11or = cal_data[CAL_OPEN][i][0] - cal_data[ETERM_ED][i][0];
-    float s11oi = cal_data[CAL_OPEN][i][1] - cal_data[ETERM_ED][i][1];
-    float s11sr = cal_data[CAL_SHORT][i][0] - cal_data[ETERM_ED][i][0];
-    float s11si = cal_data[CAL_SHORT][i][1] - cal_data[ETERM_ED][i][1];
-    // Es = (S11mo'/s11ao + S11ms’)/(S11mo' - S11ms’)
-    float numr = s11sr + s11or * s11aor - s11oi * s11aoi;
-    float numi = s11si + s11oi * s11aor + s11or * s11aoi;
-    float denomr = s11or - s11sr;
-    float denomi = s11oi - s11si;
-    float d = denomr*denomr+denomi*denomi;
-    cal_data[ETERM_ES][i][0] = (numr*denomr + numi*denomi)/d;
-    cal_data[ETERM_ES][i][1] = (numi*denomr - numr*denomi)/d;
-  }
-  cal_status &= ~CALSTAT_OPEN;
-  cal_status |= CALSTAT_ES;
-}
-
-static void
-eterm_calc_er(int sign)
-{
-  int i;
-  for (i = 0; i < sweep_points; i++) {
-    // Er = sign*(1-sign*Es)S11ms'
-    float s11sr = cal_data[CAL_SHORT][i][0] - cal_data[ETERM_ED][i][0];
-    float s11si = cal_data[CAL_SHORT][i][1] - cal_data[ETERM_ED][i][1];
-    float esr = cal_data[ETERM_ES][i][0];
-    float esi = cal_data[ETERM_ES][i][1];
-    if (sign > 0) {
-      esr = -esr;
-      esi = -esi;
-    }
-    esr = 1 + esr;
-    float err = esr * s11sr - esi * s11si;
-    float eri = esr * s11si + esi * s11sr;
-    if (sign < 0) {
-      err = -err;
-      eri = -eri;
-    }
-    cal_data[ETERM_ER][i][0] = err;
-    cal_data[ETERM_ER][i][1] = eri;
-  }
-  cal_status &= ~CALSTAT_SHORT;
-  cal_status |= CALSTAT_ER;
-}
-
-// CAUTION: Et is inversed for efficiency
-static void
-eterm_calc_et(void)
-{
-  int i;
-  for (i = 0; i < sweep_points; i++) {
-    // Et = 1/(S21mt - Ex)
-    float etr = cal_data[CAL_THRU][i][0] - cal_data[CAL_ISOLN][i][0];
-    float eti = cal_data[CAL_THRU][i][1] - cal_data[CAL_ISOLN][i][1];
-    float sq = etr*etr + eti*eti;
-    float invr =  etr / sq;
-    float invi = -eti / sq;
-    cal_data[ETERM_ET][i][0] = invr;
-    cal_data[ETERM_ET][i][1] = invi;
-  }
-  cal_status &= ~CALSTAT_THRU;
-  cal_status |= CALSTAT_ET;
-}
-#endif
-#if 0
-void apply_error_term(void)
-{
-  int i;
-  for (i = 0; i < sweep_points; i++) {
-    // S11m' = S11m - Ed
-    // S11a = S11m' / (Er + Es S11m')
-    float s11mr = measured[0][i][0] - cal_data[ETERM_ED][i][0];
-    float s11mi = measured[0][i][1] - cal_data[ETERM_ED][i][1];
-    float err = cal_data[ETERM_ER][i][0] + s11mr * cal_data[ETERM_ES][i][0] - s11mi * cal_data[ETERM_ES][i][1];
-    float eri = cal_data[ETERM_ER][i][1] + s11mr * cal_data[ETERM_ES][i][1] + s11mi * cal_data[ETERM_ES][i][0];
-    float sq = err*err + eri*eri;
-    float s11ar = (s11mr * err + s11mi * eri) / sq;
-    float s11ai = (s11mi * err - s11mr * eri) / sq;
-    measured[0][i][0] = s11ar;
-    measured[0][i][1] = s11ai;
-
-    // CAUTION: Et is inversed for efficiency
-    // S21m' = S21m - Ex
-    // S21a = S21m' (1-EsS11a)Et
-    float s21mr = measured[1][i][0] - cal_data[ETERM_EX][i][0];
-    float s21mi = measured[1][i][1] - cal_data[ETERM_EX][i][1];
-    float esr = 1 - (cal_data[ETERM_ES][i][0] * s11ar - cal_data[ETERM_ES][i][1] * s11ai);
-    float esi = - (cal_data[ETERM_ES][i][1] * s11ar + cal_data[ETERM_ES][i][0] * s11ai);
-    float etr = esr * cal_data[ETERM_ET][i][0] - esi * cal_data[ETERM_ET][i][1];
-    float eti = esr * cal_data[ETERM_ET][i][1] + esi * cal_data[ETERM_ET][i][0];
-    float s21ar = s21mr * etr - s21mi * eti;
-    float s21ai = s21mi * etr + s21mr * eti;
-    measured[1][i][0] = s21ar;
-    measured[1][i][1] = s21ai;
-  }
-}
-
-static void apply_error_term_at(int i)
-{
-    // S11m' = S11m - Ed
-    // S11a = S11m' / (Er + Es S11m')
-    float s11mr = measured[0][i][0] - cal_data[ETERM_ED][i][0];
-    float s11mi = measured[0][i][1] - cal_data[ETERM_ED][i][1];
-    float err = cal_data[ETERM_ER][i][0] + s11mr * cal_data[ETERM_ES][i][0] - s11mi * cal_data[ETERM_ES][i][1];
-    float eri = cal_data[ETERM_ER][i][1] + s11mr * cal_data[ETERM_ES][i][1] + s11mi * cal_data[ETERM_ES][i][0];
-    float sq = err*err + eri*eri;
-    float s11ar = (s11mr * err + s11mi * eri) / sq;
-    float s11ai = (s11mi * err - s11mr * eri) / sq;
-    measured[0][i][0] = s11ar;
-    measured[0][i][1] = s11ai;
-
-    // CAUTION: Et is inversed for efficiency
-    // S21m' = S21m - Ex
-    // S21a = S21m' (1-EsS11a)Et
-    float s21mr = measured[1][i][0] - cal_data[ETERM_EX][i][0];
-    float s21mi = measured[1][i][1] - cal_data[ETERM_EX][i][1];
-#if 1
-    float esr = 1 - (cal_data[ETERM_ES][i][0] * s11ar - cal_data[ETERM_ES][i][1] * s11ai);
-    float esi = 0 - (cal_data[ETERM_ES][i][1] * s11ar + cal_data[ETERM_ES][i][0] * s11ai);
-    float etr = esr * cal_data[ETERM_ET][i][0] - esi * cal_data[ETERM_ET][i][1];
-    float eti = esr * cal_data[ETERM_ET][i][1] + esi * cal_data[ETERM_ET][i][0];
-    float s21ar = s21mr * etr - s21mi * eti;
-    float s21ai = s21mi * etr + s21mr * eti;
-#else
-    // Not made CH1 correction by CH0 data
-    float s21ar = s21mr * cal_data[ETERM_ET][i][0] - s21mi * cal_data[ETERM_ET][i][1];
-    float s21ai = s21mi * cal_data[ETERM_ET][i][0] + s21mr * cal_data[ETERM_ET][i][1];
-#endif
-    measured[1][i][0] = s21ar;
-    measured[1][i][1] = s21ai;
-}
-#endif
-#if 0
-static void apply_CH0_error_term(float data[4], float c_data[CAL_TYPE_COUNT][2])
-{
-  // S11m' = S11m - Ed
-  // S11a = S11m' / (Er + Es S11m')
-  float s11mr = data[0] - c_data[ETERM_ED][0];
-  float s11mi = data[1] - c_data[ETERM_ED][1];
-  float err = c_data[ETERM_ER][0] + s11mr * c_data[ETERM_ES][0] - s11mi * c_data[ETERM_ES][1];
-  float eri = c_data[ETERM_ER][1] + s11mr * c_data[ETERM_ES][1] + s11mi * c_data[ETERM_ES][0];
-  float sq = err*err + eri*eri;
-  data[0] = (s11mr * err + s11mi * eri) / sq;
-  data[1] = (s11mi * err - s11mr * eri) / sq;
-}
-
-static void apply_CH1_error_term(float data[4], float c_data[CAL_TYPE_COUNT][2])
-{
-  // CAUTION: Et is inversed for efficiency
-  // S21a = (S21m - Ex) * Et
-  float s21mr = data[2] - c_data[ETERM_EX][0];
-  float s21mi = data[3] - c_data[ETERM_EX][1];
-  // Not made CH1 correction by CH0 data
-  data[2] = s21mr * c_data[ETERM_ET][0] - s21mi * c_data[ETERM_ET][1];
-  data[3] = s21mi * c_data[ETERM_ET][0] + s21mr * c_data[ETERM_ET][1];
-}
-
-void
-cal_collect(uint16_t type)
-{
-  uint16_t dst, src;
-
-  static const struct {
-    uint16_t set_flag;
-    uint16_t clr_flag;
-    uint8_t dst;
-    uint8_t src;
- } calibration_set[]={
-//    type       set data flag                              reset flag  destination source
-    [CAL_LOAD] = {CALSTAT_LOAD,  ~(                      CALSTAT_APPLY), CAL_LOAD,  0},
-    [CAL_OPEN] = {CALSTAT_OPEN,  ~(CALSTAT_ES|CALSTAT_ER|CALSTAT_APPLY), CAL_OPEN,  0}, // Reset Es and Er state
-    [CAL_SHORT]= {CALSTAT_SHORT, ~(CALSTAT_ES|CALSTAT_ER|CALSTAT_APPLY), CAL_SHORT, 0}, // Reset Es and Er state
-    [CAL_THRU] = {CALSTAT_THRU,  ~(           CALSTAT_ET|CALSTAT_APPLY), CAL_THRU,  1}, // Reset Et state
-    [CAL_ISOLN]= {CALSTAT_ISOLN, ~(                      CALSTAT_APPLY), CAL_ISOLN, 1},
-  };
-  if (type >= ARRAY_COUNT(calibration_set)) return;
-
-  // reset old calibration if frequency range/points not some
-  if (needInterpolate(frequency0, frequency1, sweep_points)){
-    cal_status = 0;
-    cal_frequency0 = frequency0;
-    cal_frequency1 = frequency1;
-    cal_sweep_points = sweep_points;
-  }
-  cal_power = current_props._power;
-
-  cal_status&=calibration_set[type].clr_flag;
-  cal_status|=calibration_set[type].set_flag;
-  dst = calibration_set[type].dst;
-  src = calibration_set[type].src;
-
-  // Run sweep for collect data (use minimum BANDWIDTH_30, or bigger if set)
-  uint8_t bw = config._bandwidth;  // store current setting
-//  if (bw < BANDWIDTH_100)
-//    config._bandwidth = BANDWIDTH_100;
-
-  // Set MAX settings for sweep_points on calibrate
-//  if (sweep_points != POINTS_COUNT)
-//    set_sweep_points(POINTS_COUNT);
-  uint16_t mask = (src == 0) ? SWEEP_CH0_MEASURE : SWEEP_CH1_MEASURE;
-  if (electrical_delay) mask|= SWEEP_APPLY_EDELAY;
-  // Measure calibration data
-  sweep(false, mask);
-  // Copy calibration data
-  memcpy(cal_data[dst], measured[src], sizeof measured[0]);
-
-  // Made average if need
-  int count = 1, i, j;
-  for (i = 1; i < count; i ++){
-    sweep(false, (src == 0) ? SWEEP_CH0_MEASURE : SWEEP_CH1_MEASURE);
-    for (j = 0; j < sweep_points; j++){
-      cal_data[dst][j][0]+=measured[src][j][0];
-      cal_data[dst][j][1]+=measured[src][j][1];
-    }
-  }
-  if (i != 1){
-    float k = 1.0f / i;
-    for (j = 0; j < sweep_points; j++){
-      cal_data[dst][j][0]*= k;
-      cal_data[dst][j][1]*= k;
-    }
-  }
-
-  config._bandwidth = bw;          // restore
-  request_to_redraw(REDRAW_CAL_STATUS);
-}
-
-void
-cal_done(void)
-{
-  // Set Load/Ed to default if not calculated
-  if (!(cal_status & CALSTAT_LOAD))
-    eterm_set(ETERM_ED, 0.0, 0.0);
-  // Set Isoln/Ex to default if not measured
-  if (!(cal_status & CALSTAT_ISOLN))
-    eterm_set(ETERM_EX, 0.0, 0.0);
-
-  // Precalculate Es and Er from Short and Open (and use Load/Ed data)
-  if ((cal_status & CALSTAT_SHORT) && (cal_status & CALSTAT_OPEN)) {
-    eterm_calc_es();
-    eterm_calc_er(-1);
-  } else if (cal_status & CALSTAT_OPEN) {
-    eterm_copy(CAL_SHORT, CAL_OPEN);
-    cal_status &=~ CALSTAT_OPEN;
-    eterm_set(ETERM_ES, 0.0, 0.0);
-    eterm_calc_er(1);
-  } else if (cal_status & CALSTAT_SHORT) {
-    eterm_set(ETERM_ES, 0.0, 0.0);
-    eterm_calc_er(-1);
-  }
-
-  // Apply Et
-  if (cal_status & CALSTAT_THRU)
-    eterm_calc_et();
-
-  // Set other fields to default if not set
-  if (!(cal_status & CALSTAT_ET))
-    eterm_set(ETERM_ET, 1.0, 0.0);
-  if (!(cal_status & CALSTAT_ER))
-    eterm_set(ETERM_ER, 1.0, 0.0);
-  if (!(cal_status & CALSTAT_ES))
-    eterm_set(ETERM_ES, 0.0, 0.0);
-
-  cal_status|= CALSTAT_APPLY;
-  lastsaveid = NO_SAVE_SLOT;
-  request_to_redraw(REDRAW_BACKUP | REDRAW_CAL_STATUS);
-}
-
-static void cal_interpolate(int idx, freq_t f, float data[CAL_TYPE_COUNT][2]){
-  int eterm;
-  uint16_t src_points = cal_sweep_points - 1;
-  if (idx >= 0)
-    goto copy_point;
-  if (f <= cal_frequency0){
-    idx = 0;
-    goto copy_point;
-  }
-  if (f >= cal_frequency1){
-    idx = src_points;
-    goto copy_point;
-  }
-  // Search k1
-  freq_t span = cal_frequency1 - cal_frequency0;
-  idx = (uint64_t)(f - cal_frequency0) * (uint64_t)src_points / span;
-  uint64_t v = (uint64_t)span * idx + src_points/2;
-  freq_t src_f0 = cal_frequency0 + (v       ) / src_points;
-  freq_t src_f1 = cal_frequency0 + (v + span) / src_points;
-
-  freq_t delta = src_f1 - src_f0;
-  // Not need interpolate
-  if (f == src_f0) goto copy_point;
-
-  float k1 = (delta == 0) ? 0.0f : (float)(f - src_f0) / delta;
-  // avoid glitch between freqs in different harmonics mode
-  uint32_t hf0 = si5351_get_harmonic_lvl(src_f0);
-  if (hf0 != si5351_get_harmonic_lvl(src_f1)) {
-    // f in prev harmonic, need extrapolate from prev 2 points
-    if (hf0 == si5351_get_harmonic_lvl(f)){
-      if (idx < 1) goto copy_point; // point limit
-      idx--;
-      k1+= 1.0f;
-    }
-    // f in next harmonic, need extrapolate from next 2 points
-    else {
-      if (idx >= src_points) goto copy_point; // point limit
-      idx++;
-      k1-= 1.0f;
-    }
-  }
-  // Interpolate by k1
-  float k0 = 1.0f - k1;
-  for (eterm = 0; eterm < CAL_TYPE_COUNT; eterm++) {
-    data[eterm][0] = cal_data[eterm][idx][0] * k0 + cal_data[eterm][idx+1][0] * k1;
-    data[eterm][1] = cal_data[eterm][idx][1] * k0 + cal_data[eterm][idx+1][1] * k1;
-  }
-  return;
-  // Direct point copy
-copy_point:
-  for (eterm = 0; eterm < CAL_TYPE_COUNT; eterm++) {
-    data[eterm][0] = cal_data[eterm][idx][0];
-    data[eterm][1] = cal_data[eterm][idx][1];
-  }
-  return;
-}
-
-VNA_SHELL_FUNCTION(cmd_cal)
-{
-  static const char *items[] = { "load", "open", "short", "thru", "isoln", "Es", "Er", "Et", "cal'ed" };
-
-  if (argc == 0) {
-    int i;
-    for (i = 0; i < 9; i++) {
-      if (cal_status & (1<<i))
-        shell_printf("%s ", items[i]);
-    }
-    shell_printf(VNA_SHELL_NEWLINE_STR);
-    return;
-  }
-  request_to_redraw(REDRAW_CAL_STATUS);
-  //                                     0    1     2    3     4    5  6   7     8
-  static const char cmd_cal_list[] = "load|open|short|thru|isoln|done|on|off|reset";
-  switch (get_str_index(argv[0], cmd_cal_list)) {
-    case 0:
-      cal_collect(CAL_LOAD);
-      return;
-    case 1:
-      cal_collect(CAL_OPEN);
-      return;
-    case 2:
-      cal_collect(CAL_SHORT);
-      return;
-    case 3:
-      cal_collect(CAL_THRU);
-      return;
-    case 4:
-      cal_collect(CAL_ISOLN);
-      return;
-    case 5:
-      cal_done();
-      return;
-    case 6:
-      cal_status |= CALSTAT_APPLY;
-      return;
-    case 7:
-      cal_status &= ~CALSTAT_APPLY;
-      return;
-    case 8:
-      cal_status = 0;
-      return;
-    default:
-      break;
-  }
-  shell_printf("usage: cal [%s]" VNA_SHELL_NEWLINE_STR, cmd_cal_list);
-}
-#endif
-
 VNA_SHELL_FUNCTION(cmd_save)
 {
   if (argc != 1)
@@ -2906,20 +2430,20 @@ VNA_SHELL_FUNCTION(cmd_recall)
  usage:
   shell_printf("recall {id}" VNA_SHELL_NEWLINE_STR);
 }
-
+#if 0
 static const char * const trc_channel_name[] = {
   "S11", "S21"
 };
-
 const char *get_trace_chname(int t)
 {
   return trc_channel_name[trace[t].channel&1];
 }
+#endif
 
 void set_trace_type(int t, int type, int channel)
 {
   channel&= 1;
-  bool update = trace[t].type != type || trace[t].channel != channel;
+  bool update = trace[t].type != type; // || trace[t].channel != channel;
   if (!update) return;
   if (trace[t].type != type) {
     trace[t].type = type;
@@ -2930,9 +2454,9 @@ void set_trace_type(int t, int type, int channel)
     set_trace_scale(t, trace_info_list[type].scale_unit);
     request_to_redraw(REDRAW_AREA); // need for update grid
   }
-  set_trace_channel(t, channel);
+//  set_trace_channel(t, channel);
 }
-
+#if 0
 void set_trace_channel(int t, int channel)
 {
   channel&= 1;
@@ -2941,6 +2465,7 @@ void set_trace_channel(int t, int channel)
     request_to_redraw(REDRAW_MARKER | REDRAW_PLOT);
   }
 }
+#endif
 
 void set_active_trace(int t) {
   if (current_trace == t) return;
