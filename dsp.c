@@ -262,6 +262,7 @@ static phase_t null_phase = 0.5;
 void
 dsp_process(audio_sample_t *capture, size_t length)         // Accumulated (down converted) samples in acc_x_s and acc_x_c registers
 {
+#if 0
   if (props_mode & TD_PNA) {
     length /= 2;
     while (length-- > 0) {
@@ -271,6 +272,8 @@ dsp_process(audio_sample_t *capture, size_t length)         // Accumulated (down
     sample_count++;
     return;
   }
+#endif
+
   uint32_t i = 0;
 //  int64_t samp_s = 0;
 //  int64_t samp_c = 0;
@@ -311,8 +314,24 @@ dsp_process(audio_sample_t *capture, size_t length)         // Accumulated (down
 
     } else {
 
-    int32_t sc = ((int32_t *)sincos_tbl)[i];
-    int32_t sr = ((int32_t *)capture)[i];
+//#define FAST_CALC
+#ifdef FAST_CALC
+      acc_samp_c += *(capture++);
+      acc_ref_c  += *(capture++);
+      i++;
+      acc_samp_s += *(capture++);
+      acc_ref_s  += *(capture++);
+      i++;
+      acc_samp_c -= *(capture++);
+      acc_ref_c  -= *(capture++);
+      i++;
+      acc_samp_s -= *(capture++);
+      acc_ref_s  -= *(capture++);
+      i++;
+
+#else
+        int32_t sc = ((int32_t *)sincos_tbl)[i];
+        int32_t sr = ((int32_t *)capture)[i];
 
 // int32_t acc DSP functions, but int32 can overflow
 //    samp_s = __smlatb(sr, sc, samp_s); // samp_s+= smp * sin
@@ -336,8 +355,9 @@ dsp_process(audio_sample_t *capture, size_t length)         // Accumulated (down
     acc_samp_c2= __smlaltt(acc_samp_c2, sr, sc2 ); // samp_c+= smp * cos
     acc_ref_s2 = __smlalbb( acc_ref_s2, sr, sc2 ); //  ref_s+= ref * sin
     acc_ref_c2 = __smlalbt( acc_ref_c2, sr, sc2 ); //  ref_s+= ref * cos
-#endif
     i++;
+#endif
+#endif
     }
   } while (i < length/2);
 // Accumulate result, for faster calc and prevent overflow reduce size to int32_t
@@ -445,6 +465,10 @@ calculate_vectors(void)
 
   amp_a = vna_sqrtf((float)acc_ref_c * (float)acc_ref_c + (float)acc_ref_s*(float)acc_ref_s);
   amp_b = vna_sqrtf((float)acc_samp_c * (float)acc_samp_c + (float)acc_samp_s*(float)acc_samp_s);
+#ifdef FAST_CALC
+  amp_a *= 32000;
+  amp_b *= 32000;
+#endif
 #ifdef SIDE_CHANNEL
   amp_sa = vna_sqrtf((float)acc_ref_c2 * (float)acc_ref_c2 + (float)acc_ref_s2*(float)acc_ref_s2);
   amp_sb = vna_sqrtf((float)acc_samp_c2 * (float)acc_samp_c2 + (float)acc_samp_s2*(float)acc_samp_s2);

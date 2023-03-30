@@ -1546,6 +1546,8 @@ static UI_FUNCTION_ADV_CALLBACK(menu_offset_acb)
     b->p1.u = offset;
     return;
   }
+  IF_OFFSET = offset;
+  config_save();
   si5351_set_frequency_offset(offset);
   si5351_set_frequency(get_sweep_frequency(ST_START), current_props._power);
 }
