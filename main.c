@@ -463,24 +463,17 @@ transform_domain(uint16_t ch_mask)
       data = measured[sweep_points/2];
       int fft_step = 4;
       if (VNA_MODE(VNA_MODE_WIDE))
-       fft_step = 2;
+        fft_step = 2;
       for (i = 0; i < fft_points; i++) {
-//#ifdef FFT_COMPRESS
-//#define FFT_STEP    4
-//#else
-//#define FFT_STEP    2
-//#endif
         float re = tmp[i * fft_step + 0];
         float im = tmp[i * fft_step + 1];
         volatile float f =  vna_sqrtf(re*re+im*im);
-//#ifdef FFT_COMPRESS
         if (!VNA_MODE(VNA_MODE_WIDE)) {
-        re = tmp[i * fft_step + 2];
-        im = tmp[i * fft_step + 3];
-        volatile float f2 =  vna_sqrtf(re*re+im*im);
-        if (f < f2) f = f2;
+          re = tmp[i * fft_step + 2];
+          im = tmp[i * fft_step + 3];
+          volatile float f2 =  vna_sqrtf(re*re+im*im);
+          if (f < f2) f = f2;
         }
-//#endif
         f = (data[i * MAX_MEASURED + 1] * transform_count + f) / ( transform_count+1);
         data[i * MAX_MEASURED + 1] =  f;
       }
@@ -490,14 +483,12 @@ transform_domain(uint16_t ch_mask)
         float re = tmp[i * -fft_step + -1];
         float im = tmp[i * -fft_step + -2];
         volatile float f =  vna_sqrtf(re*re+im*im);
-//#ifdef FFT_COMPRESS
         if (!VNA_MODE(VNA_MODE_WIDE)) {
-        re = tmp[i * -fft_step + -3];
-        im = tmp[i * -fft_step + -4];
-        volatile float f2 =  vna_sqrtf(re*re+im*im);
-        if (f < f2) f = f2;
+          re = tmp[i * -fft_step + -3];
+          im = tmp[i * -fft_step + -4];
+          volatile float f2 =  vna_sqrtf(re*re+im*im);
+          if (f < f2) f = f2;
         }
-//#endif
         f = (data[(i+1) * -MAX_MEASURED + 1] * transform_count + f) / ( transform_count+1);
         data[(i+1) * -MAX_MEASURED + 1] =  f;
       }
@@ -1517,7 +1508,7 @@ void do_agc(void)
   l_gain = old_l_gain;
   r_gain = old_r_gain;
 #ifdef NANOVNA_F303
-#define ADC_TARGET_LEVEL    0
+#define ADC_TARGET_LEVEL    12
 #else
 #define ADC_TARGET_LEVEL    -30
 #endif

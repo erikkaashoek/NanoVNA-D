@@ -253,8 +253,8 @@ static acc_t acc_samp_s2;
 static acc_t acc_samp_c2;
 static acc_t acc_ref_s2;
 static acc_t acc_ref_c2;
-static acc_t acc_delta_s2;
-static acc_t acc_delta_c2;
+//static acc_t acc_delta_s2;
+//static acc_t acc_delta_c2;
 #endif
 static phase_t null_phase = 0.5;
 // Cortex M4 DSP instruction use
