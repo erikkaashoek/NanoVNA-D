@@ -962,7 +962,7 @@ static UI_FUNCTION_ADV_CALLBACK(menu_transform_acb)
     apply_VNA_mode(VNA_MODE_SCROLLING, VNA_MODE_SET);
     apply_VNA_mode(VNA_MODE_WIDE, VNA_MODE_CLR);
     set_bandwidth(2);
-    config.decimation = 10;
+    current_props.decimation = 10;
     set_tau(0.1);     // shortest possible tau
     set_trace_type(0, TRC_DPHASE, 0);
     set_trace_type(3, TRC_RESIDUE, 0);
@@ -983,7 +983,7 @@ static UI_FUNCTION_ADV_CALLBACK(menu_transform_acb)
     apply_VNA_mode(VNA_MODE_SCROLLING, VNA_MODE_CLR);
     set_sweep_points(SWEEP_POINTS_MAX);
     set_bandwidth(1);
-    config.decimation = 1;
+    current_props.decimation = 1;
     set_tau(0);     // shortest possible tau
     set_sweep_points(SWEEP_POINTS_MAX);
 //    set_trace_type(3, (data == FFT_PHASE ? TRC_TRANSFORM : (TRC_FFT_AMP), 0);
@@ -1110,7 +1110,7 @@ static UI_FUNCTION_ADV_CALLBACK(menu_decimation_sel_acb)
 {
   (void)data;
   if (b){
-    b->p1.u = config.decimation;
+    b->p1.u = current_props.decimation;
     return;
   }
   menu_push_submenu(menu_decimation);
@@ -1119,11 +1119,11 @@ static UI_FUNCTION_ADV_CALLBACK(menu_decimation_sel_acb)
 static UI_FUNCTION_ADV_CALLBACK(menu_decimation_acb)
 {
   if (b){
-    b->icon = config.decimation == decimation[data] ? BUTTON_ICON_GROUP_CHECKED : BUTTON_ICON_GROUP;
+    b->icon = current_props.decimation == decimation[data] ? BUTTON_ICON_GROUP_CHECKED : BUTTON_ICON_GROUP;
     b->p1.u = decimation[data];
     return;
   }
-  config.decimation = decimation[data];
+  current_props.decimation = decimation[data];
   set_tau(get_tau());   // Increase Tau if needed for decimation.
 }
 
@@ -2117,6 +2117,7 @@ const menuitem_t menu_measure[] = {
   { MT_ADV_CALLBACK, KM_CW,                 "FREQ",                                 menu_keyboard_acb },
   { MT_ADV_CALLBACK, KM_TAU,                "tau\n" R_LINK_COLOR " %b.3f" S_SECOND, menu_keyboard_acb },
   { MT_ADV_CALLBACK, 0,                     "DECIMATION\n" R_LINK_COLOR " %bd" ,    menu_decimation_sel_acb },
+  { MT_SUBMENU,      0,                     "FFT",                                  menu_transform },
   { MT_ADV_CALLBACK, VNA_MODE_NULL_PHASE,   "NULL\nPHASE",                          menu_vna_mode_acb },
   { MT_CALLBACK, 0,                         "NULL\nA FREQ",                         menu_null_a_freq_cb },
   { MT_SUBMENU,      0,                      "SETTINGS",                            menu_measure_settings },

@@ -299,7 +299,7 @@ dsp_process(audio_sample_t *capture, size_t length)         // Accumulated (down
       }
 #else
       int16_t *sc = (int16_t *)&sincos_tbl[i];
-      int32_t sr = capture[i*2];
+      int32_t sr = capture[i*2]; // & 0xffff;
 #endif
 
       if (p_sweep < requested_points){
@@ -517,7 +517,7 @@ static phase_t side_aver;
 int
 calculate_gamma(phase_t gamma[MAX_MEASURED], uint16_t tau)
 {
-  decimated_tau = tau / config.decimation;
+  decimated_tau = tau / current_props.decimation;
 #ifndef CALC_DELTA_ANGLE
   gamma[B_PHASE] = summed_samp_angle/tau;
 #ifndef CALC_DELTA_ANGLE
@@ -530,7 +530,7 @@ calculate_gamma(phase_t gamma[MAX_MEASURED], uint16_t tau)
   WRAP_FULL_PHASE(gamma[A_PHASE]);
 
 //  df *= AUDIO_ADC_FREQ>>1;
-//  df /= config.tau*(config._bandwidth+SAMPLE_OVERHEAD) * AUDIO_SAMPLES_COUNT;
+//  df /= current_props.tau*(config._bandwidth+SAMPLE_OVERHEAD) * AUDIO_SAMPLES_COUNT;
 
 
 #ifdef CALC_DELTA_ANGLE
@@ -562,14 +562,14 @@ calculate_gamma(phase_t gamma[MAX_MEASURED], uint16_t tau)
   if (!(VNA_MODE(VNA_MODE_WIDE))) {
     if (current_props._fft_mode == FFT_AMP && p_sweep < requested_points){
       float* tmp  = (float*)spi_buffer;
-      tmp[p_sweep * 2 + 0] = (float)acc_ref_c;
-      tmp[p_sweep * 2 + 1] = (float)acc_ref_s;
+      tmp[p_sweep * 2 + 0] = (float)acc_ref_c/3;
+      tmp[p_sweep * 2 + 1] = (float)acc_ref_s/3;
       p_sweep++;
     }
     if (current_props._fft_mode == FFT_B && p_sweep < requested_points){
       float* tmp  = (float*)spi_buffer;
-      tmp[p_sweep * 2 + 0] = (float)acc_samp_c;
-      tmp[p_sweep * 2 + 1] = (float)acc_samp_s;
+      tmp[p_sweep * 2 + 0] = (float)acc_samp_c/3;
+      tmp[p_sweep * 2 + 1] = (float)acc_samp_s/3;
       p_sweep++;
     }
     if (current_props._fft_mode == FFT_PHASE && p_sweep < requested_points){
@@ -584,7 +584,7 @@ calculate_gamma(phase_t gamma[MAX_MEASURED], uint16_t tau)
 
 void calculate_subsamples(phase_t gamma[4], uint16_t tau)
 {
-  int used_samples = (AUDIO_BUFFER_LEN/2) * tau / config.decimation;
+  int used_samples = (AUDIO_BUFFER_LEN/2) * tau / current_props.decimation;
   gamma[2] = (float)acc_samp_s/(float)used_samples;
   gamma[3] = (float)acc_ref_s/(float)used_samples;
 }

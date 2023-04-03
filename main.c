@@ -797,7 +797,7 @@ VNA_SHELL_FUNCTION(cmd_decimation)
     return;
   }
   uint32_t decm = my_atoui(argv[0]);
-  config.decimation = decm;
+  current_props.decimation = decm;
   set_tau(get_tau());   // Increase Tau if needed for decimation.
 }
 
@@ -1048,8 +1048,6 @@ config_t config = {
   .xtal_offset = 0,
   ._measure_r = MEASURE_DEFAULT_R,
   . pull = {2.2, 1.423e-5, -0.379, 1.188e-6 },
-  . tau = 50,
-  . decimation = 10,
   ._lever_mode = LM_MARKER,
   ._band_mode = 0,
 };
@@ -1121,6 +1119,9 @@ void load_default_properties(void)
   current_props._cal_power = SI5351_CLK_DRIVE_STRENGTH_AUTO;
   current_props._measure   = 0;
   current_props._fft_mode  = FFT_OFF;
+  current_props.tau = 50;
+  current_props.decimation = 10;
+
 //This data not loaded by default
 //current_props._cal_data[5][POINTS_COUNT][2];
 //Checksum add on caldata_save
@@ -1262,7 +1263,7 @@ void i2s_lld_serve_rx_interrupt(uint32_t flags) {
     reset_dsp_accumerator();
     wait_count = config._bandwidth;
     if (tau_current == 0) {
-      tau_current = config.tau;
+      tau_current = current_props.tau;
       reset_averaging();
     }
   }
@@ -1284,7 +1285,7 @@ void i2s_lld_serve_rx_interrupt(uint32_t flags) {
       if (props_mode & TD_SAMPLE){
         dsp_ready = true;
       } else if (props_mode & TD_PNA) {
-        calculate_subsamples(temp_measured[temp_input++], config.tau);
+        calculate_subsamples(temp_measured[temp_input++], current_props.tau);
         temp_input &= TEMP_MASK;
         if (temp_input == temp_output) {
           temp_output = temp_input;   // Remove all cached samples
@@ -1296,7 +1297,7 @@ void i2s_lld_serve_rx_interrupt(uint32_t flags) {
 //        aver_freq_a = get_freq_a();
 //        aver_freq_b = get_freq_b();
 //        aver_freq_delta = get_freq_delta();
-        calculate_gamma(temp_measured[temp_input], config.tau);              // Calculate average angles and store in temp_measured
+        calculate_gamma(temp_measured[temp_input], current_props.tau);              // Calculate average angles and store in temp_measured
         aver_freq_a = temp_measured[temp_input][A_FREQ];
         aver_freq_b = temp_measured[temp_input][B_FREQ];
         aver_freq_delta = temp_measured[temp_input][D_FREQ];
@@ -1462,7 +1463,7 @@ void add_regression(phase_t v) {
 }
 
 phase_t finalize_regression(void) {
-  volatile double freq = AUDIO_ADC_FREQ / (config.tau * (config._bandwidth+SAMPLE_OVERHEAD) * AUDIO_SAMPLES_COUNT );
+  volatile double freq = AUDIO_ADC_FREQ / (current_props.tau * (config._bandwidth+SAMPLE_OVERHEAD) * AUDIO_SAMPLES_COUNT );
   if(reg_n >=10) {
     reg_n--;
     int32_t reg_divisor = reg_n*((double)reg_sum_xi2) - ((double)reg_sum_xi)*((double)reg_sum_xi);
@@ -1515,9 +1516,9 @@ void do_agc(void)
   int new_l_gain = l_gain - 2.0*(level_a - (ADC_TARGET_LEVEL));
   int new_r_gain = r_gain - 2.0*(level_b - (ADC_TARGET_LEVEL));
   if (new_l_gain < 0) new_l_gain = 0;
-  if (new_l_gain > 60) new_l_gain = 60;
+  if (new_l_gain > 90) new_l_gain = 90;
   if (new_r_gain < 0) new_r_gain = 0;
-  if (new_r_gain > 60) new_r_gain = 60;
+  if (new_r_gain > 90) new_r_gain = 90;
   if (abs_diff(old_l_gain, new_l_gain) > 2 || abs_diff(old_r_gain, new_r_gain) > 2) {
     l_gain = new_l_gain;
     r_gain = new_r_gain;
@@ -1606,7 +1607,7 @@ static bool sweep(bool break_on_operation, uint16_t mask)
            phase += wraps;
 
            freq =  (phase - res_prev_phase) * AUDIO_ADC_FREQ;
-           freq /= config.tau*(config._bandwidth+SAMPLE_OVERHEAD) * AUDIO_SAMPLES_COUNT;
+           freq /= current_props.tau*(config._bandwidth+SAMPLE_OVERHEAD) * AUDIO_SAMPLES_COUNT;
 
            if (dirty == 1) {
              aver_freq = freq;
@@ -1615,7 +1616,7 @@ static bool sweep(bool break_on_operation, uint16_t mask)
            }
 
 
-           residue = phase - (sample_count++) * aver_freq * config.tau*(config._bandwidth+SAMPLE_OVERHEAD) * AUDIO_SAMPLES_COUNT / AUDIO_ADC_FREQ;
+           residue = phase - (sample_count++) * aver_freq * current_props.tau*(config._bandwidth+SAMPLE_OVERHEAD) * AUDIO_SAMPLES_COUNT / AUDIO_ADC_FREQ;
            if (sample_count == 190)
              aver_residue = residue;
 #if 0
@@ -1808,7 +1809,7 @@ fetch_next:
 //  palSetPad(GPIOA, GPIOA_PA4);
   // -------------------- Average D freq  ----------------------
 
-  if (config.tau <= 10) {
+  if (current_props.tau <= 10) {
     get_value_cb_t calc = trace_info_list[GET_DFREQ].get_value_cb; // dfreq port 1
     phase_t (*array)[MAX_MEASURED] = measured;
     //  const char *format = index_ref >= 0 ? trace_info_list[type].dformat : trace_info_list[type].format; // Format string
@@ -2004,11 +2005,11 @@ void set_tau(float tau){
   else
     config._bandwidth -= SAMPLE_OVERHEAD;
 #else
-  config.tau = (tau * (float) AUDIO_ADC_FREQ / (float) AUDIO_SAMPLES_COUNT + (config._bandwidth-1)) / config._bandwidth;
-  if (config.tau < 1)
-    config.tau = 1;
-  if (config.decimation > config.tau)
-    config.decimation = config.tau;
+  current_props.tau = (tau * (float) AUDIO_ADC_FREQ / (float) AUDIO_SAMPLES_COUNT + (config._bandwidth-1)) / config._bandwidth;
+  if (current_props.tau < 1)
+    current_props.tau = 1;
+  if (current_props.decimation > current_props.tau)
+    current_props.decimation = current_props.tau;
 #endif
   RESET_SWEEP
 #if 0
@@ -2028,7 +2029,7 @@ void set_tau(float tau){
 }
 
 float get_tau(void){
-  return ( config.tau * (config._bandwidth + SAMPLE_OVERHEAD)) * (float)AUDIO_SAMPLES_COUNT / (float) AUDIO_ADC_FREQ;
+  return ( current_props.tau * (config._bandwidth + SAMPLE_OVERHEAD)) * (float)AUDIO_SAMPLES_COUNT / (float) AUDIO_ADC_FREQ;
 }
 
 void reset_sweep(void) {

@@ -326,14 +326,14 @@ static phase_t logmag_a(int i, const phase_t *v) {
   (void) i;
   (void) v;
 //  return 2*vna_log10f_x_10(v[0]*(1<<AUDIO_SHIFT)/config._bandwidth) - 210.0f;
-  return (2*vna_log10f_x_10(amp_a*(1<<AUDIO_SHIFT)/config._bandwidth) - 210.0f) - (l_gain-20) / 2.0;
+  return (2*vna_log10f_x_10(amp_a*(1<<AUDIO_SHIFT)/config._bandwidth) - 200.0f) - l_gain / 2.0;
 }
 
 static phase_t logmag_b(int i, const phase_t *v) {
   (void) i;
   (void) v;
 //  return 2*vna_log10f_x_10(v[1]*(1<<AUDIO_SHIFT)/config._bandwidth) - 210.0f;
-  return (2*vna_log10f_x_10(amp_b*(1<<AUDIO_SHIFT)/config._bandwidth) - 210.0f) - (r_gain-20) / 2.0;
+  return (2*vna_log10f_x_10(amp_b*(1<<AUDIO_SHIFT)/config._bandwidth) - 200.0f) - r_gain / 2.0;
 }
 
 #ifdef SIDE_CHANNEL
@@ -341,14 +341,14 @@ static phase_t logmag_sa(int i, const phase_t *v) {
   (void) i;
   (void) v;
 //  return 2*vna_log10f_x_10(v[1]*(1<<AUDIO_SHIFT)/config._bandwidth) - 210.0f;
-  return (2*vna_log10f_x_10(amp_sa*(1<<AUDIO_SHIFT)/config._bandwidth) - 210.0f) - (l_gain-20) / 2.0;
+  return (2*vna_log10f_x_10(amp_sa*(1<<AUDIO_SHIFT)/config._bandwidth) - 200.0f) - l_gain / 2.0;
 }
 
 static phase_t logmag_sb(int i, const phase_t *v) {
   (void) i;
   (void) v;
 //  return 2*vna_log10f_x_10(v[1]*(1<<AUDIO_SHIFT)/config._bandwidth) - 210.0f;
-  return (2*vna_log10f_x_10(amp_sb*(1<<AUDIO_SHIFT)/config._bandwidth) - 210.0f) - (r_gain-20) / 2.0;
+  return (2*vna_log10f_x_10(amp_sb*(1<<AUDIO_SHIFT)/config._bandwidth) - 200.0f) - r_gain / 2.0;
 }
 #endif
 
@@ -456,7 +456,7 @@ static phase_t residue(int i, const phase_t *v) {
   if (p < pp - 0.5) {
     wraps++;
   }
-  return p + wraps - i * aver_freq_d * config.tau*(config._bandwidth+SAMPLE_OVERHEAD) * AUDIO_SAMPLES_COUNT / AUDIO_ADC_FREQ - r_start;
+  return p + wraps - i * aver_freq_d * current_props.tau*(config._bandwidth+SAMPLE_OVERHEAD) * AUDIO_SAMPLES_COUNT / AUDIO_ADC_FREQ - r_start;
 }
 
 static phase_t transform_d(int i, const phase_t *v) {
@@ -1939,7 +1939,7 @@ draw_frequencies(void)
   }
   // Draw bandwidth and point count
   lcd_set_foreground(LCD_BW_TEXT_COLOR);
-  lcd_printf(FREQUENCIES_XPOS3, FREQUENCIES_YPOS,"tau=%Fs %up", AUDIO_SAMPLES_COUNT*config.tau*(config._bandwidth+SAMPLE_OVERHEAD)/(float)AUDIO_ADC_FREQ, p_sweep);
+  lcd_printf(FREQUENCIES_XPOS3, FREQUENCIES_YPOS,"tau=%Fs %up", AUDIO_SAMPLES_COUNT*current_props.tau*(config._bandwidth+SAMPLE_OVERHEAD)/(float)AUDIO_ADC_FREQ, p_sweep);
   lcd_set_font(FONT_NORMAL);
 }
 #if 0

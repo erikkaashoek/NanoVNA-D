@@ -73,7 +73,7 @@
 // Add RTC clock support
 #define __USE_RTC__
 // Add RTC backup registers support
-#define __USE_BACKUP__
+//#define __USE_BACKUP__
 // Add SD card support, req enable RTC (additional settings for file system see FatFS lib ffconf.h)
 #define __USE_SD_CARD__
 // If enabled serial in halconf.h, possible enable serial console control
@@ -1118,8 +1118,6 @@ typedef struct config {
   int32_t   xtal_offset;
   float    _measure_r;
   float     pull[MAX_PULL];
-  uint16_t tau;
-  uint16_t decimation;
   uint8_t  _digit_separator;
   uint8_t  _band_mode;
   uint8_t  _reserved[2];
@@ -1145,6 +1143,8 @@ typedef struct properties {
   uint8_t   log_type;
   uint16_t _cal_sweep_points;
   uint16_t _cal_status;
+  uint16_t tau;
+  uint16_t decimation;
   trace_t  _trace[TRACES_MAX];
   marker_t _markers[MARKERS_MAX];
   uint8_t  _reserved;
@@ -1440,8 +1440,8 @@ void testLog(void);        // debug log
 /*
  * flash.c
  */
-#define CONFIG_MAGIC 0x434f4e57 // Config magic value (allow reset on new config version)
-#define PROPS_MAGIC  0x434f4e52 // Properties magic value (allow reset on new properties version)
+#define CONFIG_MAGIC 0x434f4e58 // Config magic value (allow reset on new config version)
+#define PROPS_MAGIC  0x434f4e53 // Properties magic value (allow reset on new properties version)
 
 #define NO_SAVE_SLOT      ((uint16_t)(-1))
 extern uint16_t lastsaveid;
