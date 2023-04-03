@@ -282,9 +282,9 @@ static uint16_t btn_check(void)
   if (button_set & BUTTON_PUSH)
     status |= EVT_BUTTON_SINGLE_CLICK;
   if (button_set & BUTTON_UP)
-    status |= EVT_UP;
+    status |= (VNA_MODE(VNA_MODE_FLIP_DISPLAY) ? EVT_DOWN : EVT_UP);
   if (button_set & BUTTON_DOWN)
-    status |= EVT_DOWN;
+    status |= (VNA_MODE(VNA_MODE_FLIP_DISPLAY) ? EVT_UP : EVT_DOWN);
   return status;
 }
 
@@ -317,9 +317,9 @@ static uint16_t btn_wait_release(void)
         ticks > last_button_repeat_ticks) {
       uint16_t status = 0;
       if (cur_button & BUTTON_DOWN)
-        status |= EVT_DOWN | EVT_REPEAT;
+        status |= (VNA_MODE(VNA_MODE_FLIP_DISPLAY) ? EVT_UP : EVT_DOWN) | EVT_REPEAT;
       if (cur_button & BUTTON_UP)
-        status |= EVT_UP | EVT_REPEAT;
+        status |= (VNA_MODE(VNA_MODE_FLIP_DISPLAY) ? EVT_DOWN : EVT_UP) | EVT_REPEAT;
       last_button_repeat_ticks = ticks + BUTTON_REPEAT_TICKS;
       return status;
     }
@@ -951,7 +951,11 @@ static UI_FUNCTION_ADV_CALLBACK(menu_transform_acb)
 {
   (void)data;
   if(b){
-    if (data == current_props._fft_mode) b->icon = BUTTON_ICON_GROUP_CHECKED;
+    if (data == current_props._fft_mode) {
+      if (data == FFT_OFF || data == FFT_PHASE)
+        apply_VNA_mode(VNA_MODE_WIDE, VNA_MODE_CLR);
+      b->icon = BUTTON_ICON_GROUP_CHECKED;
+    }
     else b->icon = BUTTON_ICON_GROUP;
     return;
   }
