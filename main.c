@@ -348,6 +348,9 @@ kaiser_window_ext(uint32_t k, uint32_t n, uint16_t beta)
     static float kaiser_data[FFT_SIZE];
 #endif
 
+double fft_maximum;
+int fft_maximum_index;
+
 static void
 transform_domain(uint16_t ch_mask)
 {
@@ -455,6 +458,9 @@ transform_domain(uint16_t ch_mask)
 #endif
     // Made FFT in temp buffer
     fft_forward((float(*)[2])tmp);
+    fft_maximum = -200;
+    fft_maximum_index = 0;
+
     // Copy data back
     if (current_props._fft_mode == FFT_AMP || current_props._fft_mode == FFT_B || current_props._fft_mode == FFT_PHASE ) {
       fft_points = FFT_SIZE/2;
@@ -476,6 +482,10 @@ transform_domain(uint16_t ch_mask)
         }
         f = (data[i * MAX_MEASURED + 1] * transform_count + f) / ( transform_count+1);
         data[i * MAX_MEASURED + 1] =  f;
+        if (fft_maximum < f) {
+          fft_maximum = f;
+          fft_maximum_index = sweep_points/2 + i;
+        }
       }
       data = measured[sweep_points/2];
       tmp = &tmp[FFT_SIZE*2];
@@ -491,6 +501,25 @@ transform_domain(uint16_t ch_mask)
         }
         f = (data[(i+1) * -MAX_MEASURED + 1] * transform_count + f) / ( transform_count+1);
         data[(i+1) * -MAX_MEASURED + 1] =  f;
+        if (fft_maximum < f) {
+          fft_maximum = f;
+          fft_maximum_index = sweep_points/2 - i;
+        }
+      }
+      if (VNA_MODE(VNA_MODE_WIDE)) {
+        data = measured[0];
+        if (fft_maximum_index == 0 || fft_maximum_index == fft_points-1)
+          aver_freq_a = get_fft_marker_freq(fft_maximum_index);
+        else {
+          const int idx        = fft_maximum_index;
+          const float delta_Hz = get_fft_marker_freq(idx + 1) - get_fft_marker_freq(idx + 0);
+          const float y1 = data[(idx - 1) * MAX_MEASURED + 1];
+          const float y2 = data[(idx - 0) * MAX_MEASURED + 1];
+          const float y3 = data[(idx + 1) * MAX_MEASURED + 1];
+          aver_freq_a = 0.5 * (y1 - y3) / ((y1 - (2 * y2) + y3) + 1e-12);
+          aver_freq_b =  aver_freq_a = aver_freq_a * delta_Hz + get_fft_marker_freq(idx);
+          set_marker_index(active_marker, idx);
+        }
       }
 
     } else {
@@ -503,6 +532,21 @@ transform_domain(uint16_t ch_mask)
         volatile float f =  vna_sqrtf(re*re+im*im);
         f = (data[i * MAX_MEASURED + 1] * transform_count + f) / ( transform_count+1);
         data[i * MAX_MEASURED + 1] =  f;
+        if (fft_maximum < f) {
+          fft_maximum = f;
+          fft_maximum_index = i;
+        }
+      }
+      if (fft_maximum_index == 0 || fft_maximum_index == fft_points-1)
+        aver_freq_a = get_fft_marker_freq(fft_maximum_index);
+      else {
+        const int idx        = fft_maximum_index;
+        const float delta_Hz = get_fft_marker_freq(idx + 0) - get_fft_marker_freq(idx + 1);
+        const float y1         = data[(idx - 1) * MAX_MEASURED + 1];
+        const float y2         = data[(idx - 0) * MAX_MEASURED + 1];
+        const float y3         = data[(idx + 1) * MAX_MEASURED + 1];
+        aver_freq_a            = fabs(delta_Hz) * 0.5 * (y1 - y3) / ((y1 - (2 * y2) + y3) + 1e-12) + get_fft_marker_freq(idx);
+        set_marker_index(active_marker, idx);
       }
     }
     if ((props_mode & TD_AVERAGE) && transform_count < max_average_count)
@@ -1297,10 +1341,12 @@ void i2s_lld_serve_rx_interrupt(uint32_t flags) {
 //        aver_freq_a = get_freq_a();
 //        aver_freq_b = get_freq_b();
 //        aver_freq_delta = get_freq_delta();
+        if (!VNA_MODE(VNA_MODE_WIDE)) {
         calculate_gamma(temp_measured[temp_input], current_props.tau);              // Calculate average angles and store in temp_measured
         aver_freq_a = temp_measured[temp_input][A_FREQ];
         aver_freq_b = temp_measured[temp_input][B_FREQ];
         aver_freq_delta = temp_measured[temp_input][D_FREQ];
+        }
         temp_input++;
         temp_input &= TEMP_MASK;
         if (temp_input == temp_output) {

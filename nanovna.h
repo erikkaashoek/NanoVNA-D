@@ -1199,6 +1199,7 @@ void draw_all(void);
 void set_area_size(uint16_t w, uint16_t h);
 void plot_set_measure_mode(uint8_t mode);
 uint16_t plot_get_measure_channels(void);
+float get_fft_marker_freq(int index);
 
 int distance_to_index(int8_t t, uint16_t idx, int16_t x, int16_t y);
 int search_nearest_index(int x, int y, int t);

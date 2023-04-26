@@ -1420,6 +1420,11 @@ static UI_FUNCTION_CALLBACK(menu_marker_op_cb)
   ui_mode_normal();
 }
 
+static UI_FUNCTION_CALLBACK(menu_center_cb)
+{
+  set_sweep_frequency(ST_CENTER, get_sweep_frequency(ST_CENTER) + (current_props._fft_mode == FFT_AMP ? aver_freq_a : aver_freq_b));
+}
+
 static UI_FUNCTION_CALLBACK(menu_marker_search_dir_cb)
 {
   marker_search_dir(markers[active_marker].index, data == MK_SEARCH_RIGHT ? MK_SEARCH_RIGHT : MK_SEARCH_LEFT);
@@ -2031,6 +2036,7 @@ const menuitem_t menu_transform[] =
  { MT_ADV_CALLBACK, VNA_MODE_WIDE,           "WIDE\nFFT",      menu_vna_mode_acb },
  { MT_ADV_CALLBACK, 0,                       "AVERAGE",            menu_average_acb },
  { MT_ADV_CALLBACK, KM_MAX_AVER,             "MAX AVER\n" R_LINK_COLOR " %d",           menu_keyboard_acb },
+ { MT_CALLBACK,     0,                       "PEAK->\nCENTER",     menu_center_cb },
 
 //  { MT_ADV_CALLBACK, TD_FUNC_LOWPASS_IMPULSE, "LOW PASS\nIMPULSE",  menu_transform_filter_acb },
 //  { MT_ADV_CALLBACK, TD_FUNC_LOWPASS_STEP,    "LOW PASS\nSTEP",     menu_transform_filter_acb },

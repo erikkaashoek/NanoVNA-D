@@ -687,6 +687,12 @@ format_smith_value(int xpos, int ypos, const float *coeff, uint16_t idx, uint16_
 }
 #endif
 
+float get_fft_marker_freq(int index) {
+  int fft_freq_div = ((VNA_MODE(VNA_MODE_WIDE))?1:2);
+  int mul = (VNA_MODE(VNA_MODE_WIDE) ? AUDIO_SAMPLES_COUNT : 1);
+  return (index - sweep_points/2)* mul * fft_freq_div /get_tau() / FFT_SIZE;
+}
+
 static void
 trace_print_value_string(int xpos, int ypos, int t, int index, int index_ref)
 {
