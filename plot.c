@@ -690,7 +690,7 @@ format_smith_value(int xpos, int ypos, const float *coeff, uint16_t idx, uint16_
 float get_fft_marker_freq(int index) {
   int fft_freq_div = ((VNA_MODE(VNA_MODE_WIDE))?1:2);
   int mul = (VNA_MODE(VNA_MODE_WIDE) ? AUDIO_SAMPLES_COUNT : 1);
-  int freq = (index - sweep_points/2)* mul * fft_freq_div /get_tau() / FFT_SIZE;
+  float freq = (index - sweep_points/2)* mul * fft_freq_div /get_tau() / FFT_SIZE;
 //  if (current_props._fft_mode != FFT_OFF){
 //    freq += get_sweep_frequency(ST_CENTER);
 //  }

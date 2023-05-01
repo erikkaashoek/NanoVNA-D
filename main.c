@@ -236,7 +236,7 @@ static THD_FUNCTION(Thread1, arg)
 //    STOP_PROFILE;
 #endif
 //      START_PROFILE
-      if ((props_mode & DOMAIN_MODE) == DOMAIN_TIME) transform_domain(mask);
+      if ((props_mode & DOMAIN_MODE) == DOMAIN_TIME) { FREQ_CENTERSPAN(); transform_domain(mask);}
 //      STOP_PROFILE;
       // Prepare draw graphics, cache all lines, mark screen cells for redraw
       request_to_redraw(REDRAW_PLOT);
@@ -489,18 +489,18 @@ transform_domain(uint16_t ch_mask)
       }
       data = measured[sweep_points/2];
       tmp = &tmp[FFT_SIZE*2];
-      for (i = 0; i < fft_points; i++) {
-        float re = tmp[i * -fft_step + -1];
-        float im = tmp[i * -fft_step + -2];
+      for (i = 1; i < fft_points; i++) {
+        float re = tmp[i * -fft_step + 0];
+        float im = tmp[i * -fft_step + 1];
         volatile float f =  vna_sqrtf(re*re+im*im);
         if (!VNA_MODE(VNA_MODE_WIDE)) {
-          re = tmp[i * -fft_step + -3];
-          im = tmp[i * -fft_step + -4];
+          re = tmp[i * -fft_step + 2];
+          im = tmp[i * -fft_step + 3];
           volatile float f2 =  vna_sqrtf(re*re+im*im);
           if (f < f2) f = f2;
         }
-        f = (data[(i+1) * -MAX_MEASURED + 1] * transform_count + f) / ( transform_count+1);
-        data[(i+1) * -MAX_MEASURED + 1] =  f;
+        f = (data[(i) * -MAX_MEASURED + 1] * transform_count + f) / ( transform_count+1);
+        data[(i) * -MAX_MEASURED + 1] =  f;
         if (fft_maximum < f) {
           fft_maximum = f;
           fft_maximum_index = sweep_points/2 - i;
