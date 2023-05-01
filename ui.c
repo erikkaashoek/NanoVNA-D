@@ -1221,6 +1221,7 @@ void apply_VNA_mode(uint16_t idx, uint16_t value) {
         apply_VNA_mode(VNA_MODE_WIDE, VNA_MODE_CLR);
       if (VNA_MODE(VNA_MODE_WIDE)) {
         si5351_set_frequency_offset(AUDIO_ADC_FREQ/4);      // 48kHz
+        select_lever_mode(LM_FREQ_0);
       } else {
         si5351_set_frequency_offset(AUDIO_ADC_FREQ/8);      // 24kHz
       }
@@ -1422,6 +1423,7 @@ static UI_FUNCTION_CALLBACK(menu_marker_op_cb)
 
 static UI_FUNCTION_CALLBACK(menu_center_cb)
 {
+  (void)data;
   set_sweep_frequency(ST_CENTER, get_sweep_frequency(ST_CENTER) + (current_props._fft_mode == FFT_AMP ? aver_freq_a : aver_freq_b));
 }
 
@@ -3391,6 +3393,12 @@ lever_frequency(uint16_t status) {
     if (status & EVT_DOWN) freq = step_round(freq   - 1);
   } else {
     freq_t step = var_freq ? var_freq : step_round(get_sweep_frequency(ST_SPAN) / 4);
+    if (current_props._fft_mode == FFT_AMP || current_props._fft_mode == FFT_B) {
+      if (VNA_MODE(VNA_MODE_WIDE))
+          step = IF_OFFSET/2;
+      else
+        step = 200;
+    }
     if (status & EVT_UP  ) freq+= step;
     if (status & EVT_DOWN) freq-= step;
   }

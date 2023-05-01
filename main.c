@@ -1157,7 +1157,7 @@ void load_default_properties(void)
   current_props._current_trace   = 0;
   current_props._active_marker   = 0;
   current_props._previous_marker = MARKER_INVALID;
-  current_props._mode            = TD_WINDOW_MAXIMUM;
+  current_props._mode            = TD_WINDOW_MAXIMUM|TD_CENTER_SPAN;
   current_props._reserved = 0;
   current_props._power     = SI5351_CLK_DRIVE_STRENGTH_AUTO;
   current_props._cal_power = SI5351_CLK_DRIVE_STRENGTH_AUTO;
