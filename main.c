@@ -1164,7 +1164,9 @@ void load_default_properties(void)
   current_props._measure   = 0;
   current_props._fft_mode  = FFT_OFF;
   current_props.tau = 50;
-  current_props.decimation = 10;
+  current_props.decimation = 5;
+  current_props.log_type = LOG_UNWRAPPED_PHASE;
+
 
 //This data not loaded by default
 //current_props._cal_data[5][POINTS_COUNT][2];
