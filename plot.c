@@ -712,6 +712,9 @@ trace_print_value_string(int xpos, int ypos, int t, int index, int index_ref)
   get_value_cb_t c = trace_info_list[type].get_value_cb;
   if (c){                                           // Run standard get value function from table
     float v = 0;
+#if 1
+    v = c(index, array[p_sweep-1]);
+#else
     if (type == TRC_TRANSFORM || type == TRC_FFT_AMP  || type == TRC_FFT_B) {
       v = c(index, array[index]);
     } else {
@@ -721,6 +724,7 @@ trace_print_value_string(int xpos, int ypos, int t, int index, int index_ref)
       }
       v = v/(p_sweep-1);
     }
+#endif
 //    shell_printf("%f\r\n",v);
 //    if (index_ref >= 0 && v != INFINITY) v-=c(index, array[index_ref]); // Calculate delta value
     int fft_freq_div = ((VNA_MODE(VNA_MODE_WIDE))?1:2);
@@ -1949,7 +1953,7 @@ draw_frequencies(void)
   }
   // Draw bandwidth and point count
   lcd_set_foreground(LCD_BW_TEXT_COLOR);
-  lcd_printf(FREQUENCIES_XPOS3, FREQUENCIES_YPOS,"tau=%Fs %up", AUDIO_SAMPLES_COUNT*current_props.tau*(config._bandwidth+SAMPLE_OVERHEAD)/(float)AUDIO_ADC_FREQ, p_sweep);
+  lcd_printf(FREQUENCIES_XPOS3, FREQUENCIES_YPOS,"tau=%Fs dec=%d %up %c%c", AUDIO_SAMPLES_COUNT*current_props.tau*(config._bandwidth+SAMPLE_OVERHEAD)/(float)AUDIO_ADC_FREQ, current_props.decimation, p_sweep, (VNA_MODE(VNA_MODE_USB_LOG)?'U':' '),(VNA_MODE(VNA_MODE_DISK_LOG)?'D':' '));
   lcd_set_font(FONT_NORMAL);
 }
 #if 0

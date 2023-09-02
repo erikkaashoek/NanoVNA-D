@@ -812,6 +812,7 @@ static UI_FUNCTION_CALLBACK(menu_config_save_cb)
 {
   (void)data;
   config_save();
+  caldata_save(0);
   menu_move_back(true);
 }
 
@@ -2429,6 +2430,7 @@ const menuitem_t menu_top[] = {
   { MT_SUBMENU, 0, "MEASURE",   menu_measure },
   { MT_SUBMENU, 0, "DISPLAY",   menu_display },
   { MT_SUBMENU, 0, "OUTPUT",   menu_output },
+//  { MT_ADV_CALLBACK, 0, "SAVE\nSETTINGS", menu_save_acb },
 //  { MT_SUBMENU, 0, "MARKER",    menu_marker },
 //  { MT_SUBMENU, 0, "STIMULUS",  menu_stimulus },
 //  { MT_SUBMENU, 0, "CALIBRATE", menu_cal },
