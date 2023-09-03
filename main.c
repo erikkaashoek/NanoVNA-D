@@ -1093,6 +1093,7 @@ config_t config = {
   ._measure_r = MEASURE_DEFAULT_R,
   . pull = {2.2, 1.423e-5, -0.379, 1.188e-6 },
   ._lever_mode = LM_MARKER,
+  .prefix = "Ch",
   ._band_mode = 0,
 };
 
@@ -1788,13 +1789,13 @@ fetch_next:
           disk_log(log_output);
         if (VNA_MODE(VNA_MODE_USB_LOG)) {
           if (current_props.log_type == LOG_UNWRAPPED_PHASE)
-            shell_printf("%.12e ChA\r\n", log_output);
+            shell_printf("%.12e %sA\r\n", log_output, config.prefix);
           else
-            shell_printf("%f ChA\r\n", (float)log_output);
+            shell_printf("%f %sA\r\n", (float)log_output, config.prefix);
 #ifdef SIDE_CHANNEL
           if (VNA_MODE(VNA_MODE_DUMP_SIDE)) {
             float v2 = temp_measured[temp_output][S_PHASE]/2;
-            shell_printf("%e ChB\r\n", v2);
+            shell_printf("%e %sB\r\n", v2, config.prefix);
           }
 #endif
         }

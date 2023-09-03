@@ -1120,6 +1120,7 @@ typedef struct config {
   float     pull[MAX_PULL];
   uint8_t  _digit_separator;
   uint8_t  _band_mode;
+  char     prefix[32];
   uint8_t  _reserved[2];
   uint32_t checksum;
 } config_t;

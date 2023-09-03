@@ -121,6 +121,7 @@ enum {
   KM_PULL_3,
   KM_PULL_4,
   KM_MAX_AVER,
+  KM_LOG_PREFIX,
     KM_NONE
 };
 
@@ -1233,6 +1234,7 @@ void apply_VNA_mode(uint16_t idx, uint16_t value) {
       update_frequencies();
       break;
   }
+  request_to_redraw(REDRAW_FREQUENCY);
 }
 
 
@@ -2162,6 +2164,7 @@ const menuitem_t menu_log_type[] =
 const menuitem_t menu_output[] = {
   { MT_ADV_CALLBACK,    0,                      "LOG\n " R_LINK_COLOR "%s",        menu_log_type_sel_acb },
   { MT_ADV_CALLBACK,    VNA_MODE_USB_LOG,       "USB\nLOG",         menu_vna_mode_acb },
+  { MT_ADV_CALLBACK,    KM_LOG_PREFIX,          "PREFIX\n" R_LINK_COLOR " %bs",           menu_keyboard_acb },
   { MT_ADV_CALLBACK,    VNA_MODE_DISK_LOG,      "DISK\nLOG",        menu_vna_mode_acb },
   { MT_ADV_CALLBACK,    VNA_MODE_AUTO_NAME,     "AUTO\nNAME",       menu_vna_mode_acb},
   { MT_CALLBACK,        FMT_BMP_FILE,           "SAVE\nSCREENSHOT", menu_sdcard_cb },
@@ -2880,6 +2883,18 @@ UI_KEYBOARD_CALLBACK(input_date_time) {
 }
 #endif
 
+
+UI_KEYBOARD_CALLBACK(input_prefix) {
+  if (b) {
+    b->p1.text = config.prefix;
+    return;
+  }
+  memcpy(config.prefix, kp_buf, sizeof(config.prefix));
+  config.prefix[31] = 0;
+  config_save();
+  request_to_redraw(REDRAW_FREQUENCY);
+}
+
 #ifdef __USE_SD_CARD__
 UI_KEYBOARD_CALLBACK(input_filename) {
   if (b) return;
@@ -2933,6 +2948,7 @@ const keypads_list keypads_mode_tbl[KM_NONE] = {
 [KM_PULL_3]         = {KEYPAD_FLOAT,   KM_PULL_3,    "PULL 3",             input_pull     }, // pull 1
 [KM_PULL_4]         = {KEYPAD_FLOAT,   KM_PULL_4,    "PULL 4",             input_pull     }, // pull 1
 [KM_MAX_AVER]       = {KEYPAD_FREQ,    KM_MAX_AVER,  "MAX AVER",           input_max_aver }, // max aver
+[KM_LOG_PREFIX]     = {KEYPAD_TEXT,    0,            "PREFIX",             input_prefix   }, // log prefix text
 };
 
 static void

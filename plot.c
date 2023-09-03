@@ -1953,7 +1953,7 @@ draw_frequencies(void)
   }
   // Draw bandwidth and point count
   lcd_set_foreground(LCD_BW_TEXT_COLOR);
-  lcd_printf(FREQUENCIES_XPOS3, FREQUENCIES_YPOS,"tau=%Fs dec=%d %up %c%c", AUDIO_SAMPLES_COUNT*current_props.tau*(config._bandwidth+SAMPLE_OVERHEAD)/(float)AUDIO_ADC_FREQ, current_props.decimation, p_sweep, (VNA_MODE(VNA_MODE_USB_LOG)?'U':' '),(VNA_MODE(VNA_MODE_DISK_LOG)?'D':' '));
+  lcd_printf(FREQUENCIES_XPOS3, FREQUENCIES_YPOS,"tau=%Fs dec=%d %up %c%c %s", AUDIO_SAMPLES_COUNT*current_props.tau*(config._bandwidth+SAMPLE_OVERHEAD)/(float)AUDIO_ADC_FREQ, current_props.decimation, p_sweep, (VNA_MODE(VNA_MODE_USB_LOG)?'U':' '),(VNA_MODE(VNA_MODE_DISK_LOG)?'D':' '), config.prefix);
   lcd_set_font(FONT_NORMAL);
 }
 #if 0
