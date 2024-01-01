@@ -146,8 +146,8 @@ float level_b;
 float level_sa;
 float level_sb;
 #endif
-double phase_wraps = 0;
 double prev_phase = 0;
+double prev_unwrapped_phase = 0;
 int missing_samples = 0;
 uint32_t transform_count = 0;
 uint32_t max_average_count = 5;
@@ -1587,8 +1587,8 @@ void do_agc(void)
 }
 
 void reset_phase_unwrap(void) {
-  phase_wraps = 0;
   prev_phase = 0;
+  prev_unwrapped_phase = 0;
 }
 
 // main loop for measurement
@@ -1766,21 +1766,27 @@ fetch_next:
           log_output = temp_measured[temp_output][D_FREQ];
         } else if (current_props.log_type == LOG_PHASE) {
           log_output = temp_measured[temp_output][D_PHASE]/2;
+          log_output += round(temp_measured[temp_output][D_FREQ] * get_tau() * FULL_PHASE); // In case of wrapping
         } else {            // Unwrapped phase
-          double phase = temp_measured[temp_output][D_PHASE];
-          double unwrapped_phase = phase + phase_wraps;     // Unwrap
-          double delta_phase = unwrapped_phase - prev_phase; // Update phase_wraps
-          if (delta_phase > HALF_PHASE) {
-            phase_wraps -= FULL_PHASE;
-            unwrapped_phase -= FULL_PHASE;
-          }
-          if (delta_phase < -HALF_PHASE) {
-            phase_wraps += FULL_PHASE;
-            unwrapped_phase += FULL_PHASE;
-          }
+          double phase = temp_measured[temp_output][D_PHASE]/FULL_PHASE;        // Calculate phase 0 .. 1
+          if (phase < 0) phase += 1;
+          double freq_phase_delta = temp_measured[temp_output][D_FREQ] * get_tau(); // freq phase step
+          double freq_phase = prev_phase + freq_phase_delta;                        // unwrapped freq phase
+          double freq_phase_fraction = freq_phase - (int)freq_phase;
+          double delta_phase = phase - freq_phase_fraction;                         // freq phase error
+          while (delta_phase > 0.5)
+            delta_phase -= 1;
+          while (delta_phase < -0.5)
+            delta_phase += 1;
+          double unwrapped_phase = freq_phase + delta_phase;                        // correct
           prev_phase = unwrapped_phase;
+#if 1
           freq_t f = get_sweep_frequency(ST_START);
-          log_output = unwrapped_phase / 2 / f;       // scaled to frequency
+          log_output = unwrapped_phase / f;       // scaled to frequency
+#else       // debug output
+          log_output = (unwrapped_phase - prev_unwrapped_phase);
+          prev_unwrapped_phase = unwrapped_phase;
+#endif
         }
 
 
