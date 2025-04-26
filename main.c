@@ -855,18 +855,51 @@ VNA_SHELL_FUNCTION(cmd_tau)
   set_tau(freq);
 }
 
-VNA_SHELL_FUNCTION(cmd_log_type)
+VNA_SHELL_FUNCTION(cmd_log)
 {
   if (argc != 1) goto usage;
   //                              0   1
-  static const char cmd_list[] = "phase|unwrapped|frequency";
+  static const char cmd_list[] = "phase|unwrapped|frequency|off|usb";
   int index = get_str_index(argv[0], cmd_list);
-  if (index >= 0) {
+  switch(index) {
+  case 0:
+  case 1:
+  case 2:
     current_props.log_type = index;
+    return;
+  case 4:
+    config._vna_mode |= 1<<VNA_MODE_USB_LOG;
+    return;
+  case 3:
+    config._vna_mode &= ~(1<<VNA_MODE_USB_LOG);
     return;
   }
 usage:
-  shell_printf("usage: log_type {%s}" VNA_SHELL_NEWLINE_STR, cmd_list);
+  shell_printf("usage: log {%s}" VNA_SHELL_NEWLINE_STR, cmd_list);
+}
+
+VNA_SHELL_FUNCTION(cmd_null)
+{
+  if (argc != 1) goto usage;
+  //                              0   1
+  static const char cmd_list[] = "phase|frequency";
+  int index = get_str_index(argv[0], cmd_list);
+  switch(index) {
+  case 0:
+    set_null_phase(-aver_phase_d);
+    break;
+  case 1:
+    if (level_a > MIN_LEVEL && aver_freq_a > -400 && aver_freq_a < 400)
+      config.xtal_offset -= aver_freq_a * 10000000 * 260 / get_sweep_frequency(ST_CENTER); // Normalize to 10MHz
+    else
+      config.xtal_offset = 0;
+    config_save();
+
+    break;
+  }
+  return;
+usage:
+  shell_printf("usage: null {%s}" VNA_SHELL_NEWLINE_STR, cmd_list);
 }
 
 
@@ -3294,6 +3327,10 @@ static const VNAShellCommand commands[] =
     {"frequencies" , cmd_frequencies , 0},
     {"freq"        , cmd_freq        , CMD_WAIT_MUTEX|CMD_BREAK_SWEEP|CMD_RUN_IN_UI|CMD_RUN_IN_LOAD},
     {"sweep"       , cmd_sweep       , CMD_WAIT_MUTEX|CMD_BREAK_SWEEP|CMD_RUN_IN_UI|CMD_RUN_IN_LOAD},
+    {"tau"         , cmd_tau         , CMD_WAIT_MUTEX|CMD_BREAK_SWEEP|CMD_RUN_IN_UI|CMD_RUN_IN_LOAD},
+    {"log"         , cmd_log         , CMD_WAIT_MUTEX|CMD_BREAK_SWEEP|CMD_RUN_IN_UI|CMD_RUN_IN_LOAD},
+    {"null"        , cmd_null        , CMD_WAIT_MUTEX|CMD_BREAK_SWEEP|CMD_RUN_IN_UI|CMD_RUN_IN_LOAD},
+    {"decimation"  , cmd_decimation  , CMD_WAIT_MUTEX|CMD_BREAK_SWEEP|CMD_RUN_IN_UI|CMD_RUN_IN_LOAD},
 //    {"power"       , cmd_power       , CMD_RUN_IN_LOAD},
 //    {"pull"        , cmd_pull        , CMD_RUN_IN_LOAD},
 #ifdef USE_VARIABLE_OFFSET

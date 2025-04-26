@@ -2885,6 +2885,7 @@ UI_KEYBOARD_CALLBACK(input_date_time) {
 
 
 UI_KEYBOARD_CALLBACK(input_prefix) {
+  (void)data;
   if (b) {
     b->p1.text = config.prefix;
     return;

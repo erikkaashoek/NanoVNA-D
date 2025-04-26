@@ -59,7 +59,7 @@ float vna_modff(float x, float *iptr);
 #define vna_fabsf        fabsf
 #define vna_sqrtf        sqrtf
 #define vna_logf         logf
-#define vna_log10f_x_10 (logf(x) * (10.0f / logf(10.0f)))
+//#define vna_log10f_x_10(x) (logf(x) * (10.0f / logf(10.0f)))
 #define vna_expf         expf
 #define vna_atanf        atanf
 #define vna_atan2f       atan2f
