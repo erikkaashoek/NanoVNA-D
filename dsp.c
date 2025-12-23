@@ -582,7 +582,7 @@ calculate_gamma(phase_t gamma[MAX_MEASURED], uint16_t tau)
   return(tau);
 }
 
-void calculate_subsamples(phase_t gamma[4], uint16_t tau)
+void calculate_subsamples(phase_t *gamma, uint16_t tau)
 {
   int used_samples = (AUDIO_BUFFER_LEN/2) * tau / current_props.decimation;
   gamma[2] = (float)acc_samp_s/(float)used_samples;

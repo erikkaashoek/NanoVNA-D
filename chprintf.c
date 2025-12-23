@@ -43,7 +43,7 @@
 // Force putting trailing zeros on float value
 #define CHPRINTF_FORCE_TRAILING_ZEROS
 
-#define MAX_FILLER 11
+#define MAX_FILLER 15
 #define FLOAT_PRECISION         9
 #define FLOAT_PREFIX_PRECISION  3
 
@@ -103,7 +103,7 @@ static char *long_to_string_with_divisor(char *p,
 
 // default prescision = 13
 // g.mmm kkk hhh
-#define MAX_FREQ_PRESCISION 14
+#define MAX_FREQ_PRESCISION 15
 #define FREQ_PSET           1
 #define FREQ_PREFIX_SPACE   2
 
@@ -235,14 +235,19 @@ static char *ftoaS(char *p, inout_float num, int16_t precision) {
 static char *etoa(char *p, inout_float num, uint32_t precision) {
   int exp = 0;
   if (num == 0) { *p++ = '0'; return p; }
-  while (num < 0.0001) { num *= 100000.0; exp-=5; }
-  while (num < 10) { num *= 10.0; exp--; }
-  while (num > 100000) { num /= 100000.0; exp+=5; }
-  while (num > 10) { num /= 10.0; exp++; }
-  *p++ = ((int)num) + '0'; num *=10.0;
+  while (num < 0.0001) { num *= (double)100000.0; exp-=5; }
+  while (num < 10) { num *= (double)10.0; exp--; }
+  while (num > 100000) { num /= (double)100000.0; exp+=5; }
+  while (num > 10) { num /= (double)10.0; exp++; }
+  *p++ = ((int)num) + '0'; num -= (int)num; num *=(double)10.0;
   *p++ = '.';
   if (precision == 0) precision = 12;
-  while (precision--) { *p++ = (((int)num) % 10) + '0'; num *=10.0; }
+  while (precision--)
+  {
+    *p++ = ((int)num) + '0';
+    num -= (int)num;
+    num *=(double)10.0;
+  }
   *p++ = 'e';
   if (exp < 0) {  *p++ = '-'; exp = -exp;} else *p++ = '+';
   *p++ = (((int)exp) / 10 ) + '0';

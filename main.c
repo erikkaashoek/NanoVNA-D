@@ -1828,7 +1828,7 @@ fetch_next:
           disk_log(log_output);
         if (VNA_MODE(VNA_MODE_USB_LOG)) {
           if (current_props.log_type == LOG_UNWRAPPED_PHASE)
-            shell_printf("%.12e %sA\r\n", log_output, config.prefix);
+            shell_printf("%.15e %sA\r\n", log_output, config.prefix);
           else
             shell_printf("%f %sA\r\n", (float)log_output, config.prefix);
 #ifdef SIDE_CHANNEL

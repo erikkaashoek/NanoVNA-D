@@ -564,7 +564,7 @@ typedef int16_t  audio_sample_t;
 void dsp_process(audio_sample_t *src, size_t len);
 void reset_dsp_accumerator(void);
 void reset_averaging(void);
-int calculate_gamma(phase_t *gamma, uint16_t tau);
+int calculate_gamma(phase_t gamma[MAX_MEASURED], uint16_t tau);
 void calculate_subsamples(phase_t *gamma, uint16_t tau);
 float get_freq_a(void);
 float get_freq_b(void);

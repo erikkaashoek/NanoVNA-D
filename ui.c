@@ -2890,7 +2890,7 @@ UI_KEYBOARD_CALLBACK(input_prefix) {
     b->p1.text = config.prefix;
     return;
   }
-  memcpy(config.prefix, kp_buf, sizeof(config.prefix));
+  memcpy(config.prefix, kp_buf, sizeof(kp_buf));
   config.prefix[31] = 0;
   config_save();
   request_to_redraw(REDRAW_FREQUENCY);
