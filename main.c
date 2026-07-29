@@ -75,7 +75,7 @@ static volatile vna_shellcmd_t  shell_function = 0;
 // Enable sample command
 //#define ENABLE_SAMPLE_COMMAND
 // Enable I2C command for send data to AIC3204, used for debug
-//#define ENABLE_I2C_COMMAND
+#define ENABLE_I2C_COMMAND
 // Enable LCD command for send data to LCD screen, used for debug
 //#define ENABLE_LCD_COMMAND
 // Enable output debug data on screen on hard fault
@@ -83,11 +83,13 @@ static volatile vna_shellcmd_t  shell_function = 0;
 // Enable test command, used for debug
 //#define ENABLE_TEST_COMMAND
 // Enable stat command, used for debug
+// NOTE: does not currently compile - cmd_stat uses DSP_WAIT, whose expansion
+// references break_on_operation, a parameter of sweep().
 //#define ENABLE_STAT_COMMAND
 // Enable gain command, used for debug
-//#define ENABLE_GAIN_COMMAND
+#define ENABLE_GAIN_COMMAND
 // Enable port command, used for debug
-//#define ENABLE_PORT_COMMAND
+#define ENABLE_PORT_COMMAND
 // Enable si5351 register write, used for debug
 //#define ENABLE_SI5351_REG_WRITE
 // Enable i2c timing command, used for debug
@@ -208,6 +210,13 @@ static THD_FUNCTION(Thread1, arg)
   while (1) {
     bool completed = false;
     uint16_t mask = get_sweep_mask();
+#ifdef __STREAM_MODES__
+    if (stream_mode != STREAM_NORMAL) {
+      // DSP is stopped, no sweep to run. Keep servicing the UI below so the
+      // mode can be switched back from the menu.
+      stream_process();
+    } else
+#endif
     if (sweep_mode&(SWEEP_ENABLE|SWEEP_ONCE)) {
       completed = sweep(true, mask);
       sweep_mode&=~SWEEP_ONCE;
@@ -650,6 +659,51 @@ VNA_SHELL_FUNCTION(cmd_reset)
   NVIC_SystemReset();
 }
 
+#ifdef __DFU_SOFTWARE_MODE__
+VNA_SHELL_FUNCTION(cmd_dfu)
+{
+  (void)argv;
+  if (argc == 1) {
+    // "dfu status": what __early_init found in the magic word at the last boot.
+    // DEADBEEF means the value survived the reset and the jump itself failed;
+    // anything else means it never got there.
+    shell_printf("boot magic: 0x%08X" VNA_SHELL_NEWLINE_STR,
+                 *((volatile unsigned long *)BOOT_MAGIC_SEEN_ADDRESS));
+    // The ROM vector table, read from the running application. A sane MSP
+    // (0x2000xxxx) and entry point (0x1FFFxxxx) mean the jump target is real;
+    // 0xFFFFFFFF means system memory is not readable from here and no jump can
+    // ever work.
+    shell_printf("sysmem @0x%08X: MSP 0x%08X  entry 0x%08X" VNA_SHELL_NEWLINE_STR,
+                 STM32F303xC_SYSTEM_MEMORY,
+                 *((volatile uint32_t *)(STM32F303xC_SYSTEM_MEMORY)),
+                 *((volatile uint32_t *)(STM32F303xC_SYSTEM_MEMORY + 4)));
+    return;
+  }
+  shell_printf("Performing reset to DFU mode" VNA_SHELL_NEWLINE_STR);
+  enter_dfu();
+}
+#endif
+
+#ifdef __STREAM_MODES__
+VNA_SHELL_FUNCTION(cmd_mode)
+{
+  //                                       0      1      2
+  static const char cmd_mode_list[] = "normal|bulk"
+#ifdef __USB_AUDIO__
+                                      "|audio"
+#endif
+                                      ;
+  if (argc == 1) {
+    int i = get_str_index(argv[0], cmd_mode_list);
+    if (i >= 0) {
+      set_stream_mode(i);
+      return;
+    }
+  }
+  shell_printf("usage: mode {%s}" VNA_SHELL_NEWLINE_STR, cmd_mode_list);
+}
+#endif
+
 // Use macro, std isdigit more big
 #define _isdigit(c) (c >= '0' && c <= '9')
 // Rewrite universal standart str to value functions to more compact
@@ -820,6 +874,11 @@ VNA_SHELL_FUNCTION(cmd_offset)
     return;
   }
   si5351_set_frequency_offset(my_atoi(argv[0]));
+  // si5351_set_frequency_offset only rebuilds the DSP table and invalidates the
+  // si5351 cache; without this the LO keeps the old offset until something else
+  // retunes, which in a streaming mode never happens. The IF menu item has
+  // always done this - see menu_offset_acb in ui.c.
+  set_frequency(get_sweep_frequency(ST_START));
 }
 #endif
 
@@ -1315,6 +1374,36 @@ static audio_sample_t rx_buffer[AUDIO_BUFFER_LEN * 2];
 static audio_sample_t *filled_buffer;
 volatile uint16_t dsp_ready = 0;
 
+#ifdef __STREAM_MODES__
+/*
+ * Raw sample streaming, selected from CONFIG -> MODE.
+ *
+ * One staging buffer is shared by both streaming modes; they are mutually
+ * exclusive and a second buffer of this size is not affordable (see CLAUDE.md).
+ *   STREAM_BULK  - the i2s ISR copies a coherent half buffer here and Thread1
+ *                  writes it out.  The copy is required: at 192kHz the DMA laps
+ *                  rx_buffer every 2ms, far quicker than the CDC drains 768
+ *                  bytes, so streaming straight from rx_buffer would tear.
+ *   STREAM_AUDIO - the USB SOF handler fills it from rx_buffer once per frame.
+ */
+// Aligned because the audio path writes it through a uint16_t pointer and
+// ChibiOS copies it to PMA a half word at a time.
+__attribute__((aligned(4)))
+uint8_t stream_buffer[AUDIO_BUFFER_LEN * sizeof(audio_sample_t)];
+uint8_t stream_mode = STREAM_NORMAL;
+static volatile bool     stream_ready;
+static volatile uint16_t stream_drops;
+static uint16_t stream_seq;
+// Consecutive failed block writes before BULK gives up and returns to NORMAL.
+// At up to 30ms per timed-out block this is a couple of seconds of a dead host.
+#define STREAM_STALL_BLOCKS  64
+static uint16_t stream_stall;
+#ifdef __USB_AUDIO__
+_Static_assert(sizeof(stream_buffer) >= USB_AUDIO_MAX_PACKET,
+               "shared staging buffer too small for one USB audio frame");
+#endif
+#endif
+
 #if 1
 #define LOG_SIZE 256
 int speed_index = 0;
@@ -1337,6 +1426,23 @@ void i2s_lld_serve_rx_interrupt(uint32_t flags) {
   if (delta_time > 1000 && p_sweep >0) {
     volatile int kk;
     kk++;
+  }
+#endif
+#ifdef __STREAM_MODES__
+  if (stream_mode != STREAM_NORMAL) {
+    // DSP is stopped. STREAM_AUDIO is pulled straight out of rx_buffer by the
+    // USB SOF handler, so only the bulk path has anything to do here.
+    if (stream_mode == STREAM_BULK) {
+      if (stream_ready)               // Thread1 has not drained the last block
+        stream_drops++;               // count it, never overwrite it
+      else {
+        memcpy(stream_buffer,
+               (flags & STM32_DMA_ISR_TCIF) ? rx_buffer + AUDIO_BUFFER_LEN : rx_buffer,
+               sizeof(stream_buffer));
+        stream_ready = true;
+      }
+    }
+    return;
   }
 #endif
   if (wait_count == 0 || chVTGetSystemTimeX() < ready_time) {
@@ -1415,6 +1521,225 @@ extern uint16_t timings[16];
 #define DSP_PREWAIT      dsp_ready = false
 #define DSP_WAIT         while ((!dsp_ready) && temp_input == temp_output && !(operation_requested && break_on_operation)) {  /*  palClearPad(GPIOA, GPIOA_PA4); */ __WFI(); /*  palSetPad(GPIOA, GPIOA_PA4); */ }
 #define RESET_SWEEP      {p_sweep = 0; temp_output = temp_input;}
+
+#define I2S_BUFFER_LEN   ARRAY_COUNT(rx_buffer)
+#define I2S_DMA_SIZE     (I2S_BUFFER_LEN * sizeof(audio_sample_t) / sizeof(int16_t))
+
+/*
+ * I2S channel alignment.
+ *
+ * In PCM/DSP short-sync mode the DMA can start on either half of a 32 bit
+ * frame, so which codec channel lands on the even sample index is not
+ * deterministic across I2S starts.  Measured directly: three restarts gave
+ * even<-left, even<-left, even<-right.
+ *
+ * That silently swaps ref and sig, and it cross-wires the AGC - do_agc() drives
+ * l_gain from level_a, but l_gain then controls the *other* channel, which is
+ * positive feedback and runs the gains to 0/90 instead of settling.  It is a
+ * coin flip at every boot, which is why the AGC misbehaves only sometimes.
+ *
+ * Detect the alignment by driving the two MICPGAs far apart; their own noise
+ * differs by ~36 dB, so no input signal is needed.  Then restart the I2S until
+ * the alignment matches what dsp.c assumes (even = left = ref = amp_a).
+ */
+static bool i2s_even_is_left(void)
+{
+  tlv320aic3204_set_gain(95, 0);              // left loud, right quiet
+  chThdSleepMilliseconds(30);                 // MICPGA startup + a few buffers
+  uint32_t even = 0, odd = 0;
+  for (uint16_t i = 0; i < AUDIO_BUFFER_LEN; i += 2) {
+    int32_t a = rx_buffer[i], b = rx_buffer[i + 1];
+    even += (uint32_t)(a < 0 ? -a : a);
+    odd  += (uint32_t)(b < 0 ? -b : b);
+  }
+  return even > odd;
+}
+
+// Restarts needed to reach the right alignment.  Should stay 0 now that
+// initI2S() resets SPI2; a non-zero value means a stale half word is still
+// getting through and the root cause has regressed.
+uint8_t i2s_align_tries;
+
+void i2s_align(void)
+{
+  int saved_l = l_gain, saved_r = r_gain;
+  i2s_align_tries = 0;
+  while (!i2s_even_is_left() && i2s_align_tries < 8) {
+    i2s_align_tries++;
+    stopI2S();
+    initI2S(rx_buffer, I2S_DMA_SIZE);
+    chThdSleepMilliseconds(5);
+  }
+  tlv320aic3204_set_gain(saved_l, saved_r);
+}
+
+#ifdef __STREAM_MODES__
+#ifdef __USB_AUDIO__
+// IF used while streaming audio, and the user's value saved across the switch.
+// Same rate/8 ratio as the 192kHz default of 24kHz.
+#define STREAM_AUDIO_IF  (USB_AUDIO_RATE / 8)
+static int32_t saved_if;
+
+static uint16_t audio_rd;               // read index into rx_buffer, in samples
+
+// Current DMA write position in rx_buffer, in audio_sample_t units.
+static uint16_t usb_audio_wr(void) {
+  return I2S_BUFFER_LEN - dmaChannelGetTransactionSize(I2S_DMA_RX);
+}
+
+// Park the read pointer half a buffer behind the DMA so the servo below starts
+// centred instead of spending a few hundred frames walking there.
+static void usb_audio_reset(void) {
+  audio_rd = (usb_audio_wr() + I2S_BUFFER_LEN/2) % I2S_BUFFER_LEN;
+  audio_rd &= ~1;                       // must stay on a stereo frame boundary
+}
+
+/*
+ * Fill one USB frame from the circular I2S buffer, called from the USB ISR once
+ * per SOF.  The codec clock free runs against the host SOF, so the packet is
+ * nudged by one stereo frame either way to hold the backlog near half a buffer.
+ * That is what "asynchronous" in the endpoint descriptor promises the host.
+ */
+uint16_t usb_audio_fill(uint8_t *buf)
+{
+  if (stream_mode != STREAM_AUDIO) {
+    // Not armed. The capture device is always enumerated, so any host app can
+    // open it at any time; it only gets real samples once the user picked
+    // CONFIG -> MODE -> USB AUDIO. Silence keeps the stream alive meanwhile.
+    uint16_t n = USB_AUDIO_NOMINAL * USB_AUDIO_CHANNELS * sizeof(audio_sample_t);
+    memset(buf, 0, n);
+    return n;
+  }
+  int16_t avail = usb_audio_wr() - audio_rd;
+  if (avail < 0) avail += I2S_BUFFER_LEN;
+
+  int16_t n = USB_AUDIO_NOMINAL * USB_AUDIO_CHANNELS;
+  if      (avail > (int16_t)(I2S_BUFFER_LEN/2) + n) n += USB_AUDIO_CHANNELS;
+  else if (avail < (int16_t)(I2S_BUFFER_LEN/2) - n) n -= USB_AUDIO_CHANNELS;
+  if (avail < n) return 0;              // underrun, send an empty frame
+
+  uint16_t rd = audio_rd;
+  for (int16_t i = 0; i < n; i++) {
+    ((uint16_t *)buf)[i] = (uint16_t)rx_buffer[rd];
+    if (++rd >= I2S_BUFFER_LEN) rd = 0;
+  }
+  audio_rd = rd;
+  return n * sizeof(audio_sample_t);
+}
+#endif
+
+/*
+ * Select NORMAL / BULK / AUDIO.  Deliberately not persisted in config: booting
+ * with the DSP stopped would look like a hung instrument.
+ */
+void set_stream_mode(uint8_t mode)
+{
+  if (mode >= STREAM_MODES_COUNT || mode == stream_mode) return;
+#ifdef __USB_AUDIO__
+  bool was_low = (stream_mode == STREAM_AUDIO);
+  bool now_low = (mode        == STREAM_AUDIO);
+#endif
+  stream_mode  = mode;
+  stream_ready = false;
+  stream_drops = 0;
+  stream_seq   = 0;
+  stream_stall = 0;
+#ifdef __USB_AUDIO__
+  if (was_low != now_low) {
+    // The codec drives BCLK/WCLK. Changing them under a running slave shifts
+    // the DMA by a half word and swaps L/R for good, so stop it first.
+    stopI2S();
+    tlv320aic3204_set_rate(now_low);
+    initI2S(rx_buffer, I2S_DMA_SIZE);
+    i2s_align();                        // the restart can swap the channels
+    // The audio stream samples four times slower, so an IF chosen for the
+    // 192kHz codec sits at or beyond its Nyquist and returns nothing usable.
+    // Move it on the way in and put the user's value back on the way out.
+    // Measured response over 4..64kHz is flat within ~9dB with S/N ~95-99dB
+    // either way, so the exact value is not critical; STREAM_AUDIO_IF keeps
+    // the same rate/8 ratio the 192kHz default (24kHz) already uses.
+    if (now_low) {
+      saved_if = IF_OFFSET;
+      si5351_set_frequency_offset(STREAM_AUDIO_IF);
+    } else {
+      si5351_set_frequency_offset(saved_if);
+    }
+    set_frequency(get_sweep_frequency(ST_START));   // apply the new LO
+  }
+  usb_audio_reset();
+#endif
+  // Restart the DSP from a clean slate when returning to normal operation
+  reset_dsp_accumerator();
+  reset_averaging();
+  tau_current = 0;
+  wait_count  = 0;
+  RESET_SWEEP;
+}
+
+/*
+ * Drain one bulk block, called from Thread1 instead of sweep().
+ *
+ * stream_ready is cleared only after the write completes, so blocks arriving
+ * while we are still sending are counted as drops rather than silently
+ * replacing the one in flight.
+ */
+// Blocks sent per Thread1 iteration.  Each costs 1ms of UI starvation, so this
+// trades UI responsiveness against the stream keeping up: 16 leaves the UI and
+// shell running at ~60Hz while sustaining the full 1kHz block rate.
+#define STREAM_BURST  16
+
+static void stream_send_block(void);
+
+void stream_process(void)
+{
+  if (stream_mode != STREAM_BULK) {
+    __WFI();
+    return;
+  }
+  // Send a burst before handing the loop back to the UI.  The ISR only ever
+  // holds one block, so sending one per Thread1 iteration caps the stream at
+  // the UI loop rate - and that sits around 500 Hz against a 1 kHz ISR, so
+  // every other block was dropped and no two blocks were ever contiguous.
+  // Bounded so the UI and shell still get serviced a few tens of times a
+  // second while streaming.
+  for (uint8_t burst = 0; burst < STREAM_BURST; burst++) {
+    while (!stream_ready) {
+      if (stream_mode != STREAM_BULK) return;   // mode changed under us
+      __WFI();
+    }
+    stream_send_block();
+  }
+}
+
+static void stream_send_block(void)
+{
+  stream_header_t h;
+  h.magic = STREAM_BULK_MAGIC;
+  h.seq   = ++stream_seq;
+  h.drops = stream_drops;
+  h.count = AUDIO_BUFFER_LEN;
+#ifdef __USE_SERIAL_CONSOLE__
+  BaseChannel *s = VNA_MODE(VNA_MODE_CONNECTION) ? (BaseChannel *)&SD1
+                                                 : (BaseChannel *)&SDU1;
+#else
+  BaseChannel *s = (BaseChannel *)&SDU1;
+#endif
+  // Time limited: a plain streamWrite() blocks forever once the host stops
+  // draining, which leaves Thread1 stuck in here with the UI frozen and the
+  // shell unreachable - the device then needs a power cycle to recover. Losing
+  // a block is already a first class outcome, so drop it and stay alive.
+  // Plain blocking writes.  chnWriteTimeout() was tried here to survive a host
+  // that stops draining, but it stopped the stream working at all (zero bytes
+  // reached the host), so it is reverted until it can be worked out properly.
+  //
+  // KNOWN LIMITATION: if the host stops reading while in BULK, this blocks and
+  // the instrument becomes unreachable until it is power cycled.  A host tool
+  // MUST keep draining, and MUST send "mode normal" before it disconnects.
+  streamWrite((BaseSequentialStream *)s, (uint8_t *)&h, sizeof(h));
+  streamWrite((BaseSequentialStream *)s, stream_buffer, sizeof(stream_buffer));
+  stream_ready = false;
+}
+#endif
 
 #define SWEEP_CH0_MEASURE           0x01
 #define SWEEP_CH1_MEASURE           0x02
@@ -1570,8 +1895,11 @@ no_regression:
 
 #define abs_diff(a, b) ((a) > (b) ? (a) - (b) : (b) - (a))
 
+bool agc_enabled = true;      // cleared by a manual "gain", restored by "gain auto"
+
 void do_agc(void)
 {
+  if (!agc_enabled) return;   // a deliberate operating point must stick
 
   if (current_props._fft_mode  != FFT_OFF) {
     l_gain = 0;
@@ -1591,6 +1919,36 @@ void do_agc(void)
   l_gain = old_l_gain;
   r_gain = old_r_gain;
 #ifdef NANOVNA_F303
+// The input level is constant, so nothing needs reserving against excursions:
+// the AGC only has to balance mixer noise against ADC noise and stop short of
+// overload.  Measured C/N is flat from gain ~36 upwards, so SNR does not choose
+// the setting - the overload limit does.
+//
+// That limit is NOT the digital rail.  The analogue chain compresses softly:
+// measured at IF 12 kHz, THD is -78 dB up to gain 39, -73 dB at 42, then
+// collapses to -37 dB at 45 and -17 dB at 52.  The sample peak plateaus around
+// 93..95% of full scale and never reaches 32767, so a peak/clip test does not
+// see it at all - only THD and the crest factor do (1.42 when clean, 1.2 when
+// compressed).
+//
+// It is worse at high IF: the AGC servos on the ADC level, but the chain rolls
+// off after the compressing stage (-5.6 dB at 48 kHz vs 12 kHz), so reaching
+// the same ADC reading needs a higher analogue level.  The target must
+// therefore suit the highest IF in use.
+//
+// Onset is at a roughly constant fraction of full scale, measured at three IFs
+// (12/20/30 kHz): THD stays <= -70 dB up to about 80% FS and collapses above
+// ~90%.  The loop servos on the ADC level, so it holds a constant %FS whatever
+// the IF, and one target is therefore safe everywhere.
+//
+// 12 settles at gain ~52 = 71% FS: inside the linear region, and the >2 step
+// deadband only reaches ~79% at worst.  Do not raise it - 88% FS already shows
+// the sig channel at -27 dB THD.
+//
+// Do NOT judge this by crest factor at IF 48 kHz: that is exactly fs/4, so a
+// sine is sampled four times per cycle and the measured peak depends on the
+// sampling phase (1.0 to 1.414).  Use THD at an IF whose harmonics stay in
+// band and which is not a submultiple of fs.
 #define ADC_TARGET_LEVEL    12
 #else
 #define ADC_TARGET_LEVEL    -30
@@ -2055,13 +2413,29 @@ VNA_SHELL_FUNCTION(cmd_gain)
 {
   int rvalue = 0;
   int lvalue = 0;
-  if (argc == 0 && argc > 2) {
-    shell_printf("usage: gain {lgain(0-95)} [rgain(0-95)]" VNA_SHELL_NEWLINE_STR);
+  // was "argc == 0 && argc > 2", which is never true: a bare "gain" fell
+  // through and read argv[0] off the end of the array.
+  if (argc == 0 || argc > 2) {
+    shell_printf("usage: gain {auto|lgain(0-95)} [rgain(0-95)]" VNA_SHELL_NEWLINE_STR
+                 "current: %d %d, agc %s, i2s realigns %u" VNA_SHELL_NEWLINE_STR,
+                 l_gain, r_gain, agc_enabled ? "on" : "off", i2s_align_tries);
     return;
   };
+  if (get_str_index(argv[0], "auto") == 0) {
+    agc_enabled = true;                 // hand the gain back to the AGC
+    return;
+  }
+  agc_enabled = false;                  // a deliberate gain must not be undone
   lvalue = rvalue = my_atoui(argv[0]);
-  if (argc == 3)
+  if (argc == 2)                        // was argc == 3, so rgain was ignored
     rvalue = my_atoui(argv[1]);
+  // Keep the firmware's idea of the gain in step with the hardware.  do_agc()
+  // computes its correction as new = l_gain - 2*(level - target), i.e. relative
+  // to l_gain, and the trace callbacks in plot.c subtract l_gain/2 to refer
+  // levels back to the input.  Writing the codec without updating these left
+  // AGC computing from a stale baseline and converging somewhere wrong.
+  l_gain = lvalue;
+  r_gain = rvalue;
   tlv320aic3204_set_gain(lvalue, rvalue);
 }
 #endif
@@ -3066,14 +3440,21 @@ VNA_SHELL_FUNCTION(cmd_color)
 
 #ifdef ENABLE_I2C_COMMAND
 VNA_SHELL_FUNCTION(cmd_i2c){
-  if (argc != 3) {
-    shell_printf("usage: i2c page reg data" VNA_SHELL_NEWLINE_STR);
+  uint8_t page, reg;
+  if (argc == 2) {                      // read back
+    page = my_atoui(argv[0]);
+    reg  = my_atoui(argv[1]);
+    shell_printf("page %u reg %u = 0x%02X" VNA_SHELL_NEWLINE_STR,
+                 page, reg, tlv320aic3204_read_reg(page, reg));
     return;
   }
-  uint8_t page = my_atoui(argv[0]);
-  uint8_t reg  = my_atoui(argv[1]);
-  uint8_t data = my_atoui(argv[2]);
-  tlv320aic3204_write_reg(page, reg, data);
+  if (argc != 3) {
+    shell_printf("usage: i2c page reg [data]   (2 args read, 3 write)" VNA_SHELL_NEWLINE_STR);
+    return;
+  }
+  page = my_atoui(argv[0]);
+  reg  = my_atoui(argv[1]);
+  tlv320aic3204_write_reg(page, reg, my_atoui(argv[2]));
 }
 #endif
 
@@ -3372,6 +3753,12 @@ static const VNAShellCommand commands[] =
     {"touchtest"   , cmd_touchtest   , CMD_WAIT_MUTEX|CMD_BREAK_SWEEP},
     {"pause"       , cmd_pause       , CMD_WAIT_MUTEX|CMD_BREAK_SWEEP|CMD_RUN_IN_UI|CMD_RUN_IN_LOAD},
     {"resume"      , cmd_resume      , CMD_WAIT_MUTEX|CMD_BREAK_SWEEP|CMD_RUN_IN_UI|CMD_RUN_IN_LOAD},
+#ifdef __STREAM_MODES__
+    {"mode"        , cmd_mode        , CMD_WAIT_MUTEX|CMD_BREAK_SWEEP|CMD_RUN_IN_UI|CMD_RUN_IN_LOAD},
+#endif
+#ifdef __DFU_SOFTWARE_MODE__
+    {"dfu"         , cmd_dfu         , CMD_WAIT_MUTEX|CMD_BREAK_SWEEP|CMD_RUN_IN_UI},
+#endif
  //   {"cal"         , cmd_cal         , CMD_WAIT_MUTEX},
 #ifdef __SD_CARD_LOAD__
     {"msg"         , cmd_msg         , CMD_WAIT_MUTEX|CMD_BREAK_SWEEP|CMD_RUN_IN_LOAD},
@@ -3833,7 +4220,8 @@ int main(void){
 /*
  * I2S Initialize
  */
-  initI2S(rx_buffer, ARRAY_COUNT(rx_buffer) * sizeof(audio_sample_t) / sizeof(int16_t));
+initI2S(rx_buffer, I2S_DMA_SIZE);
+  i2s_align();          // pin the L/R alignment before the DSP starts
 
 /*
  * SD Card init (if inserted) allow fix issues

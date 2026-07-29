@@ -680,9 +680,76 @@ enter_dfu(void)
   lcd_clear_screen();
   lcd_drawstring(x, y, "DFU: Device Firmware Update Mode\n"
                        "To exit DFU mode, please reset device yourself.");
+#ifdef NANOVNA_F303
+  /*
+   * Jump straight into the system bootloader ROM instead of going through a
+   * reset. The magic-word-and-reset route does reach the jump (proved with the
+   * boot breadcrumb: after a "dfu" the recorded value is 0x00000000, which is
+   * only written on the branch being taken) but the device resets back into the
+   * application from there.
+   *
+   * Doing it inline lets us hand the ROM the state it wants: the USB pull-up
+   * released so the host sees a genuine disconnect and re-enumerates DFU, no
+   * live interrupt sources, and the clock tree back on HSI rather than the
+   * 72 MHz PLL the ROM is not expecting to inherit.
+   */
+  // Release the D+ pull-up (SYSCFG_PMC_USB_PU on this part - no BCDR) and give
+  // the host time to register the disconnect before the ROM re-attaches.
+  // This has to happen while the kernel is still running: chThdSleepMilliseconds
+  // needs SysTick and the scheduler, so masking interrupts first deadlocks here
+  // and the jump below never runs.
+  usbDisconnectBus(&USBD1);
+  chThdSleepMilliseconds(50);
+
+  __disable_irq();
+
+  // Silence everything that could fire inside the ROM
+  SysTick->CTRL = 0;
+  SysTick->LOAD = 0;
+  SysTick->VAL  = 0;
+  for (int i = 0; i < 8; i++) {
+    NVIC->ICER[i] = 0xFFFFFFFF;
+    NVIC->ICPR[i] = 0xFFFFFFFF;
+  }
+
+  // Put the APB peripherals genuinely back to reset. The ROM initialises USB
+  // assuming it starts from reset; leaving USBEN set with the peripheral still
+  // configured is enough to stop it attaching. AHB is left alone so PA11/PA12
+  // keep their USB alternate function.
+  RCC->APB1RSTR = 0xFFFFFFFF; RCC->APB1RSTR = 0;
+  RCC->APB2RSTR = 0xFFFFFFFF; RCC->APB2RSTR = 0;
+  RCC->APB1ENR  = 0;
+  RCC->APB2ENR  = 0;
+
+  // Back to the reset clock configuration: HSI, no PLL
+  RCC->CR |= RCC_CR_HSION;
+  while (!(RCC->CR & RCC_CR_HSIRDY));
+  RCC->CFGR &= ~RCC_CFGR_SW;
+  while (RCC->CFGR & RCC_CFGR_SWS);
+  RCC->CR &= ~(RCC_CR_PLLON | RCC_CR_HSEON | RCC_CR_CSSON);
+  RCC->CFGR  = 0;
+  RCC->CFGR2 = 0;
+  RCC->CFGR3 = 0;
+  RCC->CIR   = 0;
+
+  // Map system memory at 0 (VTOR is still 0 here only after a reset, so set it
+  // explicitly too) and hand over.
+  RCC->APB2ENR |= RCC_APB2ENR_SYSCFGEN;
+  SYSCFG->CFGR1 = (SYSCFG->CFGR1 & ~SYSCFG_CFGR1_MEM_MODE) | SYSCFG_CFGR1_MEM_MODE_0;
+  SCB->VTOR = STM32F303xC_SYSTEM_MEMORY;
+  __DSB();
+  __ISB();
+  __enable_irq();                       // the ROM services USB from interrupts
+  __set_MSP(*((volatile uint32_t *)(STM32F303xC_SYSTEM_MEMORY)));
+  ( (void (*)(void)) (*((volatile uint32_t *)(STM32F303xC_SYSTEM_MEMORY + 4))) )();
+  while (1);
+#else
   // see __early_init in ./NANOVNA_STM32_F072/board.c
-  *((unsigned long *)BOOT_FROM_SYTEM_MEMORY_MAGIC_ADDRESS) = BOOT_FROM_SYTEM_MEMORY_MAGIC;
+  // volatile so the store cannot be discarded as dead ahead of the reset
+  *((volatile unsigned long *)BOOT_FROM_SYTEM_MEMORY_MAGIC_ADDRESS) = BOOT_FROM_SYTEM_MEMORY_MAGIC;
+  __DSB();
   NVIC_SystemReset();
+#endif
 }
 #endif
 
@@ -2348,6 +2415,27 @@ const menuitem_t menu_connection[] = {
 };
 #endif
 
+#ifdef __STREAM_MODES__
+// Radio group: exactly one streaming mode is active at a time.
+static UI_FUNCTION_ADV_CALLBACK(menu_stream_mode_acb)
+{
+  if (b) {
+    b->icon = (stream_mode == data) ? BUTTON_ICON_CHECK : BUTTON_ICON_NOCHECK;
+    return;
+  }
+  set_stream_mode(data);
+}
+
+const menuitem_t menu_mode[] = {
+  { MT_ADV_CALLBACK, STREAM_NORMAL, "NORMAL",      menu_stream_mode_acb },
+  { MT_ADV_CALLBACK, STREAM_BULK,   "BULK\nSTREAM", menu_stream_mode_acb },
+#ifdef __USB_AUDIO__
+  { MT_ADV_CALLBACK, STREAM_AUDIO,  "USB\nAUDIO",  menu_stream_mode_acb },
+#endif
+  { MT_NEXT, 0, NULL, menu_back } // next-> menu_back
+};
+#endif
+
 const menuitem_t menu_clear[] = {
   { MT_CALLBACK, MENU_CONFIG_RESET, "CLEAR ALL\nAND RESET", menu_config_cb },
   { MT_NEXT, 0, NULL, menu_back } // next-> menu_back
@@ -2415,6 +2503,9 @@ const menuitem_t menu_config[] = {
   { MT_CALLBACK,  MENU_CONFIG_TOUCH_CAL, "TOUCH CAL",     menu_config_cb },
   { MT_CALLBACK, MENU_CONFIG_TOUCH_TEST, "TOUCH TEST",    menu_config_cb },
   { MT_SUBMENU,                       0, "EXPERT\nSETTINGS", menu_device },
+#ifdef __STREAM_MODES__
+  { MT_SUBMENU,                       0, "MODE",          menu_mode },
+#endif
   { MT_CALLBACK,                      0, "SAVE CONFIG",   menu_config_save_cb },
 #ifdef __USE_SERIAL_CONSOLE__
   { MT_SUBMENU,                       0, "CONNECTION",    menu_connection },

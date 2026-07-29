@@ -41,6 +41,10 @@
 #define STM32F303xC_SYSTEM_MEMORY 0x1FFFD800
 #define BOOT_FROM_SYTEM_MEMORY_MAGIC_ADDRESS 0x20009FF0
 #define BOOT_FROM_SYTEM_MEMORY_MAGIC 0xDEADBEEF
+// Breadcrumb: __early_init records here whatever it found in the magic word,
+// before clearing it, so "dfu status" can report whether the value survived the
+// reset. Above __ram0_free__ and outside .bss, so nothing initialises it.
+#define BOOT_MAGIC_SEEN_ADDRESS (BOOT_FROM_SYTEM_MEMORY_MAGIC_ADDRESS - 16)
 //#define SYSTEM_BOOT_MSP *(uint32_t *)0  // 0x20001258
 #define SYSTEM_BOOT_MSP 0x20001258
 

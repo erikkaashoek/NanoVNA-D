@@ -18,7 +18,9 @@
 #define _USBCFG_H_
 
 extern const USBConfig usbcfg;
-extern SerialUSBConfig serusbcfg;
+// Must match the definition in usbcfg.c; main.c only passes it to sduStart(),
+// which takes a const pointer.
+extern const SerialUSBConfig serusbcfg;
 extern SerialUSBDriver SDU1;
 
 #endif  /* _USBCFG_H_ */

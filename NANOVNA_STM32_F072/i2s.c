@@ -63,3 +63,12 @@ void initI2S(void *buffer, uint16_t count) {
     | SPI_I2SCFGR_I2SE            // I2S enable
     ;
 }
+
+/*
+ * Stop the I2S and its DMA, restart with initI2S() to resynchronise.
+ */
+void stopI2S(void) {
+  nvicDisableVector(STM32_SPI2_RX_DMA_IRQ_NUMBER);
+  SPI2->I2SCFGR = 0;              // Disable I2S
+  dmaChannelDisable(I2S_DMA_RX);  // Stop and rewind the circular transfer
+}

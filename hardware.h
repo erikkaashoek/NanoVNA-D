@@ -154,6 +154,7 @@ void dac_setvalue_ch2(uint16_t v);
  * Used for read samples from audio codec
  */
 void initI2S(void *buffer, uint16_t count);
+void stopI2S(void);
 
 /*
  * flash.c

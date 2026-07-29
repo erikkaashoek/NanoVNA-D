@@ -268,6 +268,8 @@
 #define STM32_USB_USE_USB1                  TRUE
 #define STM32_USB_LOW_POWER_ON_SUSPEND      FALSE
 #define STM32_USB_USB1_LP_IRQ_PRIORITY      3
+/* Needed by the USB Audio capture endpoint, see __USB_AUDIO__ in nanovna.h.*/
+#define STM32_USB_USE_ISOCHRONOUS           TRUE
 
 /*
  * WDG driver system settings.

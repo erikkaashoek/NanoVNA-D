@@ -51,6 +51,12 @@ void initI2S(void *buffer, uint16_t count) {
 
   // Starting I2S
   rccEnableSPI2(FALSE);           // Enabling I2S unit clock.
+  // Reset the peripheral before arming RXDMAEN below.  The DMA is already
+  // enabled at this point, so a half word left in DR by a previous run (RXNE
+  // still set - stopI2S disables I2S but cannot drain DR) would be transferred
+  // the instant RXDMAEN is set, landing in rx_buffer[0] and shifting every
+  // sample after it by one.  That is what swaps L and R across a restart.
+  rccResetSPI2();
   SPI2->CR1 = 0;                  // CRs settings
   SPI2->CR2 = SPI_CR2_RXDMAEN;    // Enable RX DMA
   SPI2->I2SPR   = 0;              // I2S (re)configuration.
@@ -62,4 +68,17 @@ void initI2S(void *buffer, uint16_t count) {
     | SPI_I2SCFGR_PCMSYNC         // Short sync
     | SPI_I2SCFGR_I2SE            // I2S enable
     ;
+}
+
+/*
+ * Stop the I2S and its DMA.
+ *
+ * Needed before reprogramming the codec sample rate: BCLK changes underneath
+ * the slave and a partial frame would shift the DMA by one half word, swapping
+ * the L/R channels for good.  Restart with initI2S() to resynchronise.
+ */
+void stopI2S(void) {
+  nvicDisableVector(STM32_SPI2_RX_DMA_IRQ_NUMBER);
+  SPI2->I2SCFGR = 0;              // Disable I2S
+  dmaChannelDisable(I2S_DMA_RX);  // Stop and rewind the circular transfer
 }

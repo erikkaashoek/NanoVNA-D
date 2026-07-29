@@ -346,16 +346,25 @@ tlv320aic3204_bulk_write(const uint8_t *buf, int len)
   i2c_transfer(AIC3204_ADDR, buf, len);
 }
 
-#if 0
-static int
-tlv320aic3204_read(uint8_t d0)
+/*
+ * Read one codec register back.  Worth having: a write that silently does not
+ * land is otherwise indistinguishable from a register that has no effect, and
+ * the two need very different fixes.
+ *
+ * Selects the page, reads, then restores page 1 - the rest of the driver
+ * assumes page 1 is selected and writes 0x3B/0x3C etc. without setting it.
+ */
+uint8_t tlv320aic3204_read_reg(uint8_t page, uint8_t reg)
 {
-  int addr = AIC3204_ADDR;
-  uint8_t buf[] = { d0 };
-  i2c_receive(&I2CD1, addr, buf, 1, buf, 1);
-  return buf[0];
+  uint8_t buf[2] = { 0x00, page };
+  tlv320aic3204_bulk_write(buf, 2);
+  buf[0] = reg;
+  i2c_receive(AIC3204_ADDR, buf, 1, buf, 1);
+  uint8_t value = buf[0];
+  buf[0] = 0x00; buf[1] = 0x01;         // back to page 1
+  tlv320aic3204_bulk_write(buf, 2);
+  return value;
 }
-#endif
 
 static void
 tlv320aic3204_config(const uint8_t *data, int len)
@@ -370,6 +379,56 @@ void tlv320aic3204_init(void)
 //  wait_ms(40);
   tlv320aic3204_config(conf_data_unmute, sizeof(conf_data_unmute)/2);
 }
+
+#ifdef __USB_AUDIO__
+/*
+ * Sample rate switch for the USB audio streaming mode.
+ *
+ * Only the rate dependent page 0 registers are rewritten; duplicating the whole
+ * conf_data block for a second rate would cost a few hundred bytes of flash for
+ * no benefit.  Values are lifted verbatim from the AUDIO_ADC_FREQ variants
+ * above, so keep them in sync if those are ever changed.  Both tables end by
+ * restoring page 1, which the rest of the driver assumes is selected.
+ */
+static const uint8_t conf_data_rate_192k[] = {
+// reg, data,
+  0x00, 0x00,      // Select Page 0
+  0x0b, 0x82,      // NDAC = 2
+  0x0c, 0x84,      // MDAC = 4
+  0x0d, 0x00,      // DAC OSR = 64
+  0x0e, 0x40,
+  0x3c,   17,      // DAC PRB_P17
+  0x12, 0x82,      // NADC = 2
+  0x13, 0x84,      // MADC = 4
+  0x14, 0x40,      // AOSR = 64
+  0x3d,    7,      // ADC PRB_R7
+  0x1e, REG_30(8), // BCLK divider 8
+  0x00, 0x01,      // Select Page 1 (assumed default elsewhere)
+};
+
+static const uint8_t conf_data_rate_48k[] = {
+// reg, data,
+  0x00, 0x00,       // Select Page 0
+  0x0b, 0x82,       // NDAC = 2
+  0x0c, 0x88,       // MDAC = 8
+  0x0d, 0x00,       // DAC OSR = 128
+  0x0e, 0x80,
+  0x3c, 0x01,       // DAC PRB_P1
+  0x12, 0x81,       // NADC = 1
+  0x13, 0x88,       // MADC = 8
+  0x14, 0x80,       // AOSR = 128
+  0x3d, 0x01,       // ADC PRB_R1
+  0x1e, REG_30(32), // BCLK divider 32
+  0x00, 0x01,       // Select Page 1 (assumed default elsewhere)
+};
+
+// low = true selects AUDIO_ADC_FREQ/4, false restores AUDIO_ADC_FREQ.
+void tlv320aic3204_set_rate(bool low)
+{
+  tlv320aic3204_config(low ? conf_data_rate_48k : conf_data_rate_192k,
+                       sizeof(conf_data_rate_48k)/2);
+}
+#endif
 
 void
 tlv320aic3204_write_reg(uint8_t page, uint8_t reg, uint8_t data)

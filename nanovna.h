@@ -65,11 +65,7 @@
 // Use DAC (in H4 used for brightness used DAC, so need enable __LCD_BRIGHTNESS__ for it)
 //#define __VNA_ENABLE_DAC__
 // Allow enter to DFU from menu or command
-#if defined(NANOVNA_F303)
-//#define __DFU_SOFTWARE_MODE__
-#else
 #define __DFU_SOFTWARE_MODE__
-#endif
 // Add RTC clock support
 #define __USE_RTC__
 // Add RTC backup registers support
@@ -304,6 +300,66 @@ void reset_phase_unwrap(void);
 
 #define AUDIO_ADC_FREQ       (AUDIO_ADC_FREQ_K*1000)
 #define FREQUENCY_OFFSET     (FREQUENCY_IF_K*1000)
+
+/*
+ * Raw sample streaming modes (CONFIG -> MODE).
+ *
+ * STREAM_BULK sends raw I2S blocks over the CDC, STREAM_AUDIO exposes them as a
+ * USB Audio Class 1.0 capture device at AUDIO_ADC_FREQ/4.  The audio path needs
+ * a 192kHz codec because the 48kHz register patch table is derived from it, and
+ * it needs the F303 USB peripheral for the isochronous endpoint.
+ */
+#if defined(NANOVNA_F303) && AUDIO_ADC_FREQ == 192000 && !defined(AUDIO_32_BIT)
+#define __USB_AUDIO__
+#endif
+#define __STREAM_MODES__
+
+#ifdef __USB_AUDIO__
+/*
+ * USB Audio Class 1.0 capture endpoint.
+ *
+ * Rate is fixed at AUDIO_ADC_FREQ/4. Anything faster does not fit the 512 byte
+ * PMA: 192kHz stereo would need 768 bytes per frame. See the budget in usbcfg.c.
+ */
+#define USB_AUDIO_EP              3
+#define USB_AUDIO_RATE            (AUDIO_ADC_FREQ / 4)
+#define USB_AUDIO_CHANNELS        2
+// Frames per 1ms USB frame, plus one frame of headroom for codec/SOF drift
+#define USB_AUDIO_NOMINAL         (USB_AUDIO_RATE / 1000)
+#define USB_AUDIO_MAX             (USB_AUDIO_NOMINAL + 1)
+#define USB_AUDIO_MAX_PACKET      (USB_AUDIO_MAX * USB_AUDIO_CHANNELS * 2)
+
+// Fills buf with up to USB_AUDIO_MAX_PACKET bytes and returns the byte count
+// for this frame. Implemented in main.c, called from USB ISR context.
+uint16_t usb_audio_fill(uint8_t *buf);
+// Set by the SET_INTERFACE handler, true while the host has selected alt 1.
+extern bool usb_audio_active;
+#endif
+
+enum {
+  STREAM_NORMAL = 0,    // DSP runs, codec at AUDIO_ADC_FREQ
+  STREAM_BULK,          // DSP stopped, raw blocks over CDC
+#ifdef __USB_AUDIO__
+  STREAM_AUDIO,         // DSP stopped, raw samples over USB audio
+#endif
+  STREAM_MODES_COUNT
+};
+
+// Header prepended to every STREAM_BULK block so the host can detect gaps
+#define STREAM_BULK_MAGIC   0xA55A
+typedef struct {
+  uint16_t magic;
+  uint16_t seq;         // increments per block sent
+  uint16_t drops;       // blocks lost since start (link too slow)
+  uint16_t count;       // payload samples (int16, L/R interleaved)
+} stream_header_t;
+
+extern uint8_t stream_mode;
+// Staging buffer shared by both streaming modes; they are mutually exclusive.
+// Sized for a bulk block, which is always >= USB_AUDIO_MAX_PACKET.
+extern uint8_t stream_buffer[];
+void set_stream_mode(uint8_t mode);
+void stream_process(void);
 
 // Apply calibration after made sweep, (if set 1, then calibration move out from sweep cycle)
 #define APPLY_CALIBRATION_AFTER_SWEEP 0
@@ -586,6 +642,10 @@ void tlv320aic3204_init(void);
 void tlv320aic3204_set_gain(uint8_t lgain, uint8_t rgain);
 void tlv320aic3204_select(uint8_t channel);
 void tlv320aic3204_write_reg(uint8_t page, uint8_t reg, uint8_t data);
+uint8_t tlv320aic3204_read_reg(uint8_t page, uint8_t reg);
+#ifdef __USB_AUDIO__
+void tlv320aic3204_set_rate(bool low);
+#endif
 
 /*
  * vna_math.c

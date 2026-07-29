@@ -68,56 +68,44 @@ const PALConfig pal_default_config = {
  * any other initialization.
  */
 void __early_init(void) {
-  // Refer to thess pages for how to start dfu from software
+  // Enter the ST system bootloader (DFU) when enter_dfu() left the magic word
+  // in RAM and reset us.  This runs before .data/.bss init, and the magic
+  // address sits above __ram0_free__ (the heap is disabled), so it survives.
+  // Refer to these pages for how to start dfu from software
   // https://community.st.com/s/question/0D50X00009XkeeWSAR/stm32l476rg-jump-to-bootloader-from-software
   // https://stm32f4-discovery.net/2017/04/tutorial-jump-system-memory-software-stm32/
-#if 0
-  if ( *((unsigned long *)BOOT_FROM_SYTEM_MEMORY_MAGIC_ADDRESS) == BOOT_FROM_SYTEM_MEMORY_MAGIC ) {
-    // require irq
-    // __enable_irq();
-    // reset magic bytes
-    *((unsigned long *)BOOT_FROM_SYTEM_MEMORY_MAGIC_ADDRESS) = 0;
-   #if 1
-    // https://stm32f4-discovery.net/2017/04/tutorial-jump-system-memory-software-stm32/
-    // Step: Disable systick timer and reset it to default values
-    #if 0
-    SysTick->CTRL = 0;
-    SysTick->LOAD = 0;
-    SysTick->VAL = 0;
-    #endif
-    // Step: Disable all interrupts
-    __disable_irq();
-    // Remap system memory to address 0x0000 0000 in address space
-    typedef void (*pFunction)(void);
-    pFunction bootloader;
-    uint32_t msp;
-    uint32_t foo = SYSCFG->CFGR1;
-    foo = (foo & ~SYSCFG_CFGR1_MEM_MODE) || SYSCFG_CFGR1_MEM_MODE_0;
-    SYSCFG->CFGR1 = foo;
-    //foo = SYSCFG->CFGR1;
+  // volatile: these are bare absolute addresses with no other reader in this
+  // translation unit, so a non-volatile load/store is fair game for the
+  // optimiser to fold away.
+  volatile unsigned long *magic = (volatile unsigned long *)BOOT_FROM_SYTEM_MEMORY_MAGIC_ADDRESS;
+  unsigned long seen = *magic;
+  *((volatile unsigned long *)BOOT_MAGIC_SEEN_ADDRESS) = seen;   // for "dfu status"
+  if ( seen == BOOT_FROM_SYTEM_MEMORY_MAGIC ) {
+    // reset magic bytes so the next reset boots the application again
+    *magic = 0;
+    // Interrupts must be ENABLED, not masked: the ST bootloader services USB
+    // from interrupts and assumes it starts from reset with PRIMASK clear.
+    // Masking them leaves it sitting in the bootloader with no USB, which looks
+    // exactly like "reset but never enumerated as DFU". The F072 path has always
+    // done this - see the "require irq" comment in NANOVNA_STM32_F072/board.c.
+    __enable_irq();
+    // Remap system memory to 0x00000000. ChibiOS does not set VTOR until
+    // chSysInit(), so at this point the core still fetches vectors from 0 and
+    // the remap is what redirects them to the bootloader. SYSCFG is clock gated
+    // out of reset, and without this the remap silently does nothing.
+    RCC->APB2ENR |= RCC_APB2ENR_SYSCFGEN;
+    SYSCFG->CFGR1 = (SYSCFG->CFGR1 & ~SYSCFG_CFGR1_MEM_MODE) | SYSCFG_CFGR1_MEM_MODE_0;
+    // Belt and braces on a Cortex-M4: point VTOR at the bootloader too, so it
+    // does not matter whether anything already moved it.
+    SCB->VTOR = STM32F303xC_SYSTEM_MEMORY;
     __DSB();
     __ISB();
-    //__DSB();
-    //__ISB();
-    #if 1
-    bootloader = (void (*)(void)) (*((uint32_t *)(STM32F303xC_SYSTEM_MEMORY+4)));
-    //msp = *(uint32_t *) STM32F303xC_SYSTEM_MEMORY;
-    msp = 0x20002250;
-    #else
-    bootloader = (void (*)(void)) (*((uint32_t *)(4)));
-    //msp = *(uint32_t *) 0;
-    msp = 0x20002250;
-    #endif
-    __set_MSP(msp);
-    bootloader();
-    while(1);
-   #else
-    __set_MSP(SYSTEM_BOOT_MSP); 
+    // Take the stack pointer and entry point from the system memory vector
+    // table rather than hardcoding them; they differ between silicon revisions.
+    __set_MSP(*((uint32_t *)(STM32F303xC_SYSTEM_MEMORY)));
     ( (void (*)(void)) (*((uint32_t *)(STM32F303xC_SYSTEM_MEMORY+4))) )();
     while(1);
-   #endif
   }
-#endif
 
   stm32_clock_init();
 }
